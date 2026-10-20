@@ -1,0 +1,33 @@
+{
+  "name": "agent-hub",
+  "productName": "Agent Hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local kanban board of Claude Code and Codex sessions",
+  "type": "module",
+  "main": "dist/desktop/main.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts --dev",
+    "start": "tsx src/server.ts",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "app": "npm run build && electron .",
+    "package": "npm run build && node scripts/package.mjs",
+    "icon": "electron scripts/icon.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.304"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "@types/node": "^26.6.5",
+    "electron": "^44.9.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
