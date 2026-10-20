@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <circle cx="512.0" cy="294.5" r="54.7" fill="#e08a62" />
+  <circle cx="700.9" cy="621.4" r="54.7" fill="#e08a62" />
+  <circle cx="323.1" cy="621.4" r="54.7" fill="#e08a62" />
+  <circle cx="700.9" cy="402.6" r="54.7" fill="#5ea0f2" />
+  <circle cx="512.0" cy="729.5" r="54.7" fill="#5ea0f2" />
+  <circle cx="323.1" cy="402.6" r="54.7" fill="#5ea0f2" />
+  <circle cx="604.0" cy="170.3" r="31.1" fill="#e08a62" />
+  <circle cx="853.7" cy="604.0" r="31.1" fill="#e08a62" />
+  <circle cx="420.0" cy="853.7" r="31.1" fill="#e08a62" />
+  <circle cx="170.3" cy="420.0" r="31.1" fill="#e08a62" />
+  <circle cx="763.0" cy="261.0" r="31.1" fill="#5ea0f2" />
+  <circle cx="763.0" cy="763.0" r="31.1" fill="#5ea0f2" />
+  <circle cx="261.0" cy="763.0" r="31.1" fill="#5ea0f2" />
+  <circle cx="261.0" cy="261.0" r="31.1" fill="#5ea0f2" />
+  <circle cx="853.7" cy="420.0" r="31.1" fill="#94948f" />
+  <circle cx="604.0" cy="853.7" r="31.1" fill="#94948f" />
+  <circle cx="170.3" cy="604.0" r="31.1" fill="#94948f" />
+  <circle cx="420.0" cy="170.3" r="31.1" fill="#94948f" />
+</svg>
