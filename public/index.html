@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Hub</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="toolbar">
+      <h1>Agent Hub</h1>
+      <div class="filter">
+        Repo
+        <details id="filter-repo" class="multi-select">
+          <summary><span class="multi-select-value">All</span></summary>
+          <div class="multi-select-menu" role="group" aria-label="Repos">
+            <button type="button" class="link-button multi-select-clear">Show all</button>
+            <div class="multi-select-options"></div>
+          </div>
+        </details>
+      </div>
+      <div class="filter">
+        Source
+        <details id="filter-source" class="multi-select">
+          <summary><span class="multi-select-value">All</span></summary>
+          <div class="multi-select-menu" role="group" aria-label="Sources">
+            <button type="button" class="link-button multi-select-clear">Show all</button>
+            <div class="multi-select-options"></div>
+          </div>
+        </details>
+      </div>
+      <span id="updated" class="updated"></span>
+    </header>
+    <section id="usage" class="usage" aria-label="Plan usage" hidden></section>
+    <div id="errors" class="errors" hidden></div>
+    <main id="board" class="board"></main>
+    <script src="/app.js"></script>
+  </body>
+</html>
