@@ -8,49 +8,51 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <header class="toolbar">
-      <span id="summary" class="summary" aria-live="polite"></span>
-      <div class="filter">
-        Repo
-        <details id="filter-repo" class="multi-select">
-          <summary><span class="multi-select-value">All</span></summary>
-          <div class="multi-select-menu" role="group" aria-label="Repos">
-            <button type="button" class="link-button multi-select-clear">Show all</button>
-            <div class="multi-select-options"></div>
-          </div>
+    <div class="top">
+      <header class="toolbar">
+        <span id="summary" class="summary" aria-live="polite"></span>
+        <div class="filter">
+          Repo
+          <details id="filter-repo" class="multi-select">
+            <summary><span class="multi-select-value">All</span></summary>
+            <div class="multi-select-menu" role="group" aria-label="Repos">
+              <button type="button" class="link-button multi-select-clear">Show all</button>
+              <div class="multi-select-options"></div>
+            </div>
+          </details>
+        </div>
+        <div class="filter">
+          Source
+          <details id="filter-source" class="multi-select">
+            <summary><span class="multi-select-value">All</span></summary>
+            <div class="multi-select-menu" role="group" aria-label="Sources">
+              <button type="button" class="link-button multi-select-clear">Show all</button>
+              <div class="multi-select-options"></div>
+            </div>
+          </details>
+        </div>
+        <div class="filter">
+          Ticket
+          <details id="filter-ticket" class="multi-select">
+            <summary><span class="multi-select-value">All</span></summary>
+            <div class="multi-select-menu" role="group" aria-label="Tickets">
+              <button type="button" class="link-button multi-select-clear">Show all</button>
+              <div class="multi-select-options"></div>
+            </div>
+          </details>
+        </div>
+        <details id="usage" class="multi-select usage" hidden>
+          <summary title="Plan usage"><span class="usage-compact"></span></summary>
+          <div class="multi-select-menu usage-panel" role="group" aria-label="Plan usage"></div>
         </details>
-      </div>
-      <div class="filter">
-        Source
-        <details id="filter-source" class="multi-select">
-          <summary><span class="multi-select-value">All</span></summary>
-          <div class="multi-select-menu" role="group" aria-label="Sources">
-            <button type="button" class="link-button multi-select-clear">Show all</button>
-            <div class="multi-select-options"></div>
-          </div>
+        <details id="hooks" class="multi-select hooks" hidden>
+          <summary title="Status from Claude and Codex hooks"><span class="hooks-value">Live status</span></summary>
+          <div class="multi-select-menu hooks-panel" role="group" aria-label="Live status"></div>
         </details>
-      </div>
-      <div class="filter">
-        Ticket
-        <details id="filter-ticket" class="multi-select">
-          <summary><span class="multi-select-value">All</span></summary>
-          <div class="multi-select-menu" role="group" aria-label="Tickets">
-            <button type="button" class="link-button multi-select-clear">Show all</button>
-            <div class="multi-select-options"></div>
-          </div>
-        </details>
-      </div>
-      <details id="usage" class="multi-select usage" hidden>
-        <summary title="Plan usage"><span class="usage-compact"></span></summary>
-        <div class="multi-select-menu usage-panel" role="group" aria-label="Plan usage"></div>
-      </details>
-      <details id="hooks" class="multi-select hooks" hidden>
-        <summary title="Status from Claude and Codex hooks"><span class="hooks-value">Live status</span></summary>
-        <div class="multi-select-menu hooks-panel" role="group" aria-label="Live status"></div>
-      </details>
-      <span id="updated" class="updated"></span>
-    </header>
-    <div id="errors" class="errors" hidden></div>
+        <span id="updated" class="updated"></span>
+      </header>
+      <div id="errors" class="errors" hidden></div>
+    </div>
     <main id="board" class="board"></main>
     <script src="/app.js"></script>
   </body>
