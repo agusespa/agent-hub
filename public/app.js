@@ -11,6 +11,8 @@ let dragOrigin = null;
 /** The card whose ticket is being typed: `{ id, value }`. */
 let editing = null;
 let pollTimer;
+/** The last save or open that failed: it stays on the banner until closed, since polls only redraw the board's errors. */
+let actionError = null;
 /** Each repo's hue, from its place in the sorted repo list: far apart, and steady until a repo is added. */
 let repoHues = new Map();
 
@@ -461,15 +463,32 @@ const render = ({ force = false } = {}) => {
   $('#board').replaceChildren(...board.columns.map((column) => renderColumn(column, cardsIn(column))));
   // A two-digit hour keeps the text one width, so the toolbar doesn't shift as the time changes.
   $('#updated').textContent = `Updated ${new Date(board.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  renderErrors();
+};
+
+const renderErrors = () => {
+  const lines = (board?.errors ?? []).map((message) => el('p', '', message));
+  if (actionError) {
+    const line = el('p', '', actionError);
+    const close = el('button', 'link-button errors-close', '×');
+    close.type = 'button';
+    close.title = 'Dismiss';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.addEventListener('click', () => {
+      actionError = null;
+      renderErrors();
+    });
+    line.append(close);
+    lines.push(line);
+  }
   const errors = $('#errors');
-  errors.hidden = board.errors.length === 0;
-  errors.replaceChildren(...board.errors.map((message) => el('p', '', message)));
+  errors.hidden = lines.length === 0;
+  errors.replaceChildren(...lines);
 };
 
 const showError = (message) => {
-  const errors = $('#errors');
-  errors.hidden = false;
-  errors.replaceChildren(el('p', '', message));
+  actionError = message;
+  renderErrors();
 };
 
 const poll = async () => {

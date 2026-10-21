@@ -404,6 +404,13 @@ body {
   margin: 2px 0;
 }
 
+.errors-close {
+  margin-left: 8px;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+}
+
 .board {
   display: grid;
   grid-template-columns: repeat(4, minmax(320px, 1fr));
