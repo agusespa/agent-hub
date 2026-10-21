@@ -1,7 +1,7 @@
 import { watch } from 'node:fs';
 import { mkdir, readdir, readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import type { LiveStatus, SessionRecord } from './types.js';
+import type { LiveStatus, SessionRecord, Source } from './types.js';
 
 /** What hooks/agent-hub-hook.mjs writes for a session's latest hook event. `status` is null once it ended. */
 export interface HookStatus {
@@ -33,6 +33,16 @@ const STATUSES = new Set<unknown>(['working', 'waiting', 'idle', null]);
 const isHookStatus = (value: unknown): value is HookStatus => {
   const { id, status, at } = (value ?? {}) as Partial<HookStatus>;
   return typeof id === 'string' && STATUSES.has(status) && typeof at === 'number';
+};
+
+/** When each source's hooks last reported, as far back as the status files go. */
+export const lastEventBySource = (statuses: ReadonlyMap<string, HookStatus>): Partial<Record<Source, number>> => {
+  const last: Partial<Record<Source, number>> = {};
+  for (const { id, at } of statuses.values()) {
+    const source = id.split(':')[0] as Source;
+    if (at > (last[source] ?? 0)) last[source] = at;
+  }
+  return last;
 };
 
 /** The status files hooks write, read on each board and watched so a hook event updates the board at once. */

@@ -2,7 +2,7 @@ import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CLAUDE_HOLD_MS, HookStatusMerge, HookStatusStore, type HookStatus } from './hookStatus.js';
+import { CLAUDE_HOLD_MS, HookStatusMerge, HookStatusStore, lastEventBySource, type HookStatus } from './hookStatus.js';
 import type { LiveStatus, SessionRecord } from './types.js';
 
 const record = (id: string, liveStatus: LiveStatus | null = null, waitingFor?: string): SessionRecord => ({
@@ -84,5 +84,14 @@ describe('HookStatusStore', () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     stop();
     expect(calls).toBe(1);
+  });
+});
+
+describe('lastEventBySource', () => {
+  it("takes each source's latest event and leaves out sources with none", () => {
+    const last = lastEventBySource(
+      statuses({ id: 'claude:a', status: 'idle', at: 5 }, { id: 'claude:b', status: null, at: 9 }, { id: 'claude:c', status: 'working', at: 7 }),
+    );
+    expect(last).toEqual({ claude: 9 });
   });
 });

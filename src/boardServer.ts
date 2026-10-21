@@ -7,7 +7,7 @@ import { cardsStartedWorking, isOnBoard, orderCards, toCard } from './board.js';
 import { PROJECT_ROOT } from './app.js';
 import { repoNameForCwd } from './git.js';
 import { HookInstaller, type HookState } from './hookInstall.js';
-import { HOOK_STATUS_DIR, HookStatusMerge, HookStatusStore } from './hookStatus.js';
+import { HOOK_STATUS_DIR, HookStatusMerge, HookStatusStore, lastEventBySource } from './hookStatus.js';
 import { isTicketId, TicketStore } from './ticket.js';
 import { openInApp, sessionUrl } from './openSession.js';
 import { PlacementStore } from './placements.js';
@@ -25,6 +25,8 @@ interface Board {
   missingSources: Source[];
   /** Whether the board's hooks are in each tool's config. */
   hooks: Record<Source, HookState>;
+  /** When each source's hooks last reported, within the 12 hours status files are kept. */
+  lastHookEvents: Partial<Record<Source, number>>;
   pollIntervalMs: number;
   liveReload: boolean;
   generatedAt: number;
@@ -198,6 +200,7 @@ export const startBoardServer = async ({
       errors,
       missingSources: [...missing],
       hooks: hookState,
+      lastHookEvents: lastEventBySource(hooked),
       pollIntervalMs: POLL_INTERVAL_MS,
       liveReload,
       generatedAt: Date.now(),

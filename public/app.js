@@ -361,21 +361,29 @@ const renderHooks = () => {
   const picker = $('#hooks');
   const sources = Object.keys(SOURCE_LABELS).filter((source) => (board.hooks?.[source] ?? 'unavailable') !== 'unavailable');
   picker.hidden = !sources.length;
-  const drawn = JSON.stringify([board.hooks, hooksSaving]);
+  const on = sources.filter((source) => board.hooks[source] === 'on');
+  // Whether events arrive says more than the configs do: Codex skips hooks it has not been told to trust.
+  const events = on.map((source) => {
+    const at = board.lastHookEvents?.[source];
+    if (at) return el('p', 'usage-note', `${SOURCE_LABELS[source]}: last event ${timeAgo(at)}`);
+    const hint = source === 'codex' ? 'If a Codex session is running, trust the hooks: run /hooks in the Codex CLI.' : 'A session started before they were turned on needs a restart.';
+    return el('p', 'usage-note', `${SOURCE_LABELS[source]}: no events in the last 12 hours. ${hint}`);
+  });
+  const drawn = JSON.stringify([board.hooks, hooksSaving, events.map((line) => line.textContent)]);
   if (!sources.length || drawn === hooksDrawn) return;
   hooksDrawn = drawn;
-  const on = sources.filter((source) => board.hooks[source] === 'on');
   const allOn = on.length === sources.length;
   picker.querySelector('.hooks-value').textContent = allOn ? 'Live status on' : on.length ? 'Live status partly on' : 'Live status off';
   const names = (list) => list.map((source) => SOURCE_LABELS[source]).join(' and ');
   const lines = allOn
     ? [
         el('p', '', `On for ${names(on)}. New sessions use the hooks; running ones may need a restart.`),
-        ...(on.includes('codex') ? [el('p', 'usage-note', 'Codex runs new hooks only once you trust them: run /hooks in the Codex CLI.')] : []),
+        ...events,
       ]
     : [
         el('p', '', 'Hooks tell the board as soon as a session starts working, needs you or stops, and give Codex sessions a status, which the board cannot read otherwise.'),
         el('p', 'usage-note', `Adds the board's hooks to ${sources.map((source) => HOOK_CONFIGS[source]).join(' and ')}. They pass on only the session id: prompts, tool details and transcripts are not read.`),
+        ...events,
       ];
   const button = el('button', 'hooks-button', hooksSaving ? 'Saving…' : allOn ? 'Turn off' : 'Turn on');
   Object.assign(button, { type: 'button', disabled: hooksSaving });
