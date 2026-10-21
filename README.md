@@ -14,3 +14,7 @@ A local kanban board of Claude Code and Codex sessions.
 ## Data sources
 
 The board only reads, and only through documented interfaces: the `claude` CLI and Agent SDK, and `codex app-server`. Prompt and transcript text is never shown or stored.
+
+## Live status
+
+Off by default. **Live status → Turn on** adds the board's hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`, the only files the board writes outside its own folder; **Turn off** removes just those. With them on, status changes show at once and Codex cards get a status too. The hooks keep only the session id and the event's status, in `live-status/` under the saved data folder. Codex runs a new hook only after you trust it with `/hooks` in the Codex CLI.

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { packager } from '@electron/packager';
 
 /** The app runs only from these; everything else in the project stays out of the bundle. */
-const KEEP = /^\/(package\.json$|dist(\/|$)|public(\/|$)|node_modules(\/|$))/;
+const KEEP = /^\/(package\.json$|dist(\/|$)|public(\/|$)|hooks(\/|$)|node_modules(\/|$))/;
 
 /**
  * Tool caches such as node_modules/.vitest-cache, and the SDK's bundled Claude binary (~260 MB):

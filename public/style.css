@@ -349,6 +349,41 @@ body {
   opacity: 0.6;
 }
 
+.hooks {
+  font-size: 12px;
+}
+
+/* Opens under its summary, lined up with its right edge like the usage panel. */
+.hooks-panel {
+  right: 0;
+  left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 300px;
+  padding: 10px 12px;
+}
+
+.hooks-panel p {
+  margin: 0;
+}
+
+.hooks-button {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.hooks-button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
 .plan,
 .usage-note,
 .usage-reset {

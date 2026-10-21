@@ -351,6 +351,51 @@ const renderUsage = () => {
   );
 };
 
+const HOOK_CONFIGS = { claude: '~/.claude/settings.json', codex: '~/.codex/hooks.json' };
+/** The hooks state the panel was drawn for, so a poll does not redraw it under the pointer. */
+let hooksDrawn = null;
+let hooksSaving = false;
+
+/** The live status menu: whether the board's hooks are on, and the button that turns them on or off. */
+const renderHooks = () => {
+  const picker = $('#hooks');
+  const sources = Object.keys(SOURCE_LABELS).filter((source) => (board.hooks?.[source] ?? 'unavailable') !== 'unavailable');
+  picker.hidden = !sources.length;
+  const drawn = JSON.stringify([board.hooks, hooksSaving]);
+  if (!sources.length || drawn === hooksDrawn) return;
+  hooksDrawn = drawn;
+  const on = sources.filter((source) => board.hooks[source] === 'on');
+  const allOn = on.length === sources.length;
+  picker.querySelector('.hooks-value').textContent = allOn ? 'Live status on' : on.length ? 'Live status partly on' : 'Live status off';
+  const names = (list) => list.map((source) => SOURCE_LABELS[source]).join(' and ');
+  const lines = allOn
+    ? [
+        el('p', '', `On for ${names(on)}. New sessions use the hooks; running ones may need a restart.`),
+        ...(on.includes('codex') ? [el('p', 'usage-note', 'Codex runs new hooks only once you trust them: run /hooks in the Codex CLI.')] : []),
+      ]
+    : [
+        el('p', '', 'Hooks tell the board as soon as a session starts working, needs you or stops, and give Codex sessions a status, which the board cannot read otherwise.'),
+        el('p', 'usage-note', `Adds the board's hooks to ${sources.map((source) => HOOK_CONFIGS[source]).join(' and ')}. They pass on only the session id: prompts, tool details and transcripts are not read.`),
+      ];
+  const button = el('button', 'hooks-button', hooksSaving ? 'Saving…' : allOn ? 'Turn off' : 'Turn on');
+  Object.assign(button, { type: 'button', disabled: hooksSaving });
+  if (allOn) button.title = "Removes only the board's hooks";
+  button.addEventListener('click', () => setHooks(!allOn));
+  picker.querySelector('.hooks-panel').replaceChildren(...lines, button);
+};
+
+const setHooks = async (on) => {
+  hooksSaving = true;
+  renderHooks();
+  try {
+    await send('PUT', '/api/hooks', { on });
+  } catch (error) {
+    showError(`Turning live status ${on ? 'on' : 'off'} failed: ${error.message}`);
+  }
+  hooksSaving = false;
+  await poll();
+};
+
 /** The card the dragged one would land before at height `y`, or null for the end of the list. */
 const cardBelow = (list, y) =>
   [...list.querySelectorAll('.card:not(.dragging)')].find((card) => {
@@ -449,6 +494,7 @@ const render = ({ force = false } = {}) => {
   if (!board || dragging || (editing && !force)) return;
   renderFilters();
   renderUsage();
+  renderHooks();
   // The server sends cards in the order the user dragged them into.
   const visible = board.cards.filter(matchesFilters);
   renderSummary(visible);
@@ -511,17 +557,21 @@ const poll = async () => {
   pollTimer = setTimeout(poll, board?.pollIntervalMs ?? 5000);
 };
 
-/** With `npm run dev`: reloads the page when the server restarts or a file in public/ changes. */
+/**
+ * Loads the board as soon as a hook reports a session's status. With `npm run dev`, also
+ * reloads the page when the server restarts or a file in public/ changes.
+ */
 let watchingForChanges = false;
 const watchForChanges = () => {
-  if (watchingForChanges || !board?.liveReload) return;
+  if (watchingForChanges || !board) return;
   watchingForChanges = true;
-  const events = new EventSource('/api/live-reload');
+  const events = new EventSource('/api/events');
   let connected = false;
   events.addEventListener('open', () => {
-    if (connected) location.reload();
+    if (connected && board.liveReload) location.reload();
     connected = true;
   });
+  events.addEventListener('board', () => poll());
   events.addEventListener('reload', () => location.reload());
 };
 
