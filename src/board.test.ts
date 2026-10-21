@@ -27,9 +27,9 @@ describe('isOnBoard', () => {
     expect(isOnBoard({ ...record, liveStatus: 'idle', lastActiveAt: 0 }, nothingKept, now)).toBe(true);
   });
 
-  it('shows old sessions the user moved out of Parked or set a Jira key on', () => {
+  it('shows old sessions the user moved out of Parked or set a ticket on', () => {
     expect(isOnBoard({ ...idle, lastActiveAt: 0 }, { placement: 'done' }, now)).toBe(true);
-    expect(isOnBoard({ ...idle, lastActiveAt: 0 }, { placement: undefined, jiraKey: 'PROJ-7' }, now)).toBe(true);
+    expect(isOnBoard({ ...idle, lastActiveAt: 0 }, { placement: undefined, ticket: 'PROJ-7' }, now)).toBe(true);
   });
 
   it('hides old sessions the user moved to Parked', () => {
@@ -54,9 +54,9 @@ describe('toCard', () => {
     expect(toCard(record, { repo: 'r', placement: 'done' }).column).toBe('done');
   });
 
-  it('carries the Jira key the user set, and none from the branch', () => {
-    expect(toCard(record, { repo: 'r', placement: undefined }).jiraKey).toBeNull();
-    expect(toCard(record, { repo: 'r', placement: undefined, jiraKey: 'PROJ-7' }).jiraKey).toBe('PROJ-7');
+  it('carries the ticket the user set, and none from the branch', () => {
+    expect(toCard(record, { repo: 'r', placement: undefined }).ticket).toBeNull();
+    expect(toCard(record, { repo: 'r', placement: undefined, ticket: 'PROJ-7' }).ticket).toBe('PROJ-7');
   });
 });
 

@@ -11,7 +11,7 @@ import {
 interface CardContext {
   repo: string;
   placement: ColumnId | undefined;
-  jiraKey?: string;
+  ticket?: string;
 }
 
 /** How long a session can sit unused before it drops off the board. */
@@ -19,24 +19,24 @@ export const STALE_AFTER_MS = 45 * 24 * 60 * 60 * 1000;
 
 /**
  * Sessions to show: those active in the last 45 days, running, or kept by the user by
- * moving the card out of Parked or setting a Jira key on it. A session with no timestamps
+ * moving the card out of Parked or setting a ticket on it. A session with no timestamps
  * is shown, as its age is unknown. A hidden session comes back once it is used again.
  */
 export const isOnBoard = (
   record: SessionRecord,
-  { placement, jiraKey }: Pick<CardContext, 'placement' | 'jiraKey'>,
+  { placement, ticket }: Pick<CardContext, 'placement' | 'ticket'>,
   now = Date.now(),
 ): boolean => {
   const lastActive = record.lastActiveAt ?? record.createdAt;
-  const kept = (placement ?? DEFAULT_COLUMN) !== DEFAULT_COLUMN || jiraKey !== undefined;
+  const kept = (placement ?? DEFAULT_COLUMN) !== DEFAULT_COLUMN || ticket !== undefined;
   return record.liveStatus !== null || lastActive === undefined || now - lastActive <= STALE_AFTER_MS || kept;
 };
 
 /** Cards start in Parked until the user moves them or the session starts working (see `cardsStartedWorking`). */
-export const toCard = (record: SessionRecord, { repo, placement, jiraKey }: CardContext): Card => ({
+export const toCard = (record: SessionRecord, { repo, placement, ticket }: CardContext): Card => ({
   ...record,
   repo,
-  jiraKey: jiraKey ?? null,
+  ticket: ticket ?? null,
   column: placement ?? DEFAULT_COLUMN,
 });
 

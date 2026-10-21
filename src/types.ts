@@ -69,7 +69,7 @@ export interface PlanUsage {
 
 export interface Card extends SessionRecord {
   repo: string;
-  /** The Jira key the user set on the board. */
-  jiraKey: string | null;
+  /** The ticket the user set on the board, such as PROJ-1234. */
+  ticket: string | null;
   column: ColumnId;
 }

@@ -9,7 +9,7 @@ A local kanban board of Claude Code and Codex sessions.
 
 ## Saved data
 
-`~/Library/Application Support/Agent Hub/` holds `placements.json` (card columns and order) and `jira.json` (the Jira key you set on each card with + Jira), both plain JSON. There are no settings. Sessions unused for 45 days drop off the board unless they are running or you moved the card out of Parked or set a Jira key on it.
+`~/Library/Application Support/Agent Hub/` holds `placements.json` (card columns and order) and `tickets.json` (the ticket you set on each card with + Ticket), both plain JSON. There are no settings. Sessions unused for 45 days drop off the board unless they are running or you moved the card out of Parked or set a ticket on it.
 
 ## Data sources
 

@@ -75,7 +75,7 @@ const start = async () => {
   });
 };
 
-// Electron's caches go in a subfolder so placements.json and jira.json stay easy to find.
+// Electron's caches go in a subfolder so placements.json and tickets.json stay easy to find.
 app.setPath('userData', path.join(DATA_DIR, 'Electron'));
 
 // No top-level await: Electron does not fire `ready` until the ESM entry module has finished evaluating.

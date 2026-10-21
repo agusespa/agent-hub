@@ -6,17 +6,22 @@ const SOURCE_LABELS = { claude: 'Claude', codex: 'Codex' };
 
 let board = null;
 let dragging = false;
-/** The card whose Jira key is being typed: `{ id, value }`. */
+/** Where the dragged card sat before the drag, so hovering a sorted column puts it back. */
+let dragOrigin = null;
+/** The card whose ticket is being typed: `{ id, value }`. */
 let editing = null;
 let pollTimer;
 /** Each repo's hue, from its place in the sorted repo list: far apart, and steady until a repo is added. */
 let repoHues = new Map();
 
+/** The ticket filter's value for cards without one; ticket IDs are upper case, so it never clashes. */
+const NO_TICKET = 'none';
+
 /**
- * The repos and sources unticked in the filters, so new ones show, and the last-active
- * columns flipped to oldest first.
+ * The repos, sources and tickets unticked in the filters, so new ones show, and the
+ * last-active columns flipped to oldest first.
  */
-const view = { hiddenRepos: [], hiddenSources: [], oldestFirst: [] };
+const view = { hiddenRepos: [], hiddenSources: [], hiddenTickets: [], oldestFirst: [] };
 try {
   const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
   const strings = (values) => (Array.isArray(values) ? values.filter((v) => typeof v === 'string') : []);
@@ -52,10 +57,12 @@ const resetTime = (ms) =>
 
 // A key typed in any case, or the last one in a pasted link (`…/browse/PROJ-12`, `?selectedIssue=PROJ-12`).
 const KEY_IN_TEXT = /(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9]{1,9}-\d{1,7})(?![A-Za-z0-9])/g;
-const parseJiraKey = (text) => [...text.matchAll(KEY_IN_TEXT)].at(-1)?.[1].toUpperCase() ?? null;
+const parseTicketId = (text) => [...text.matchAll(KEY_IN_TEXT)].at(-1)?.[1].toUpperCase() ?? null;
 
 const matchesFilters = (card) =>
-  !view.hiddenRepos.includes(card.repo) && !view.hiddenSources.includes(card.source);
+  !view.hiddenRepos.includes(card.repo) &&
+  !view.hiddenSources.includes(card.source) &&
+  !view.hiddenTickets.includes(card.ticket ?? NO_TICKET);
 
 /**
  * Fills a checkbox filter with `[value, label]` options, ticked unless hidden; `plural` names several.
@@ -108,12 +115,15 @@ const renderFilters = () => {
     board.missingSources?.includes(source) ? `${label} (not installed)` : label,
   ]);
   fillMultiSelect($('#filter-source'), sources, view.hiddenSources, 'sources');
+  // Like repos, hidden tickets stay listed; cards without one share the last option.
+  const tickets = unique([...board.cards.map((card) => card.ticket), ...view.hiddenTickets.filter((ticket) => ticket !== NO_TICKET)]);
+  fillMultiSelect($('#filter-ticket'), [...tickets.map((ticket) => [ticket, ticket]), [NO_TICKET, 'No ticket']], view.hiddenTickets, 'tickets');
 };
 
 const startEditing = (card) => {
-  editing = { id: card.id, value: card.jiraKey ?? '' };
+  editing = { id: card.id, value: card.ticket ?? '' };
   render({ force: true });
-  document.querySelector('.jira-input')?.select();
+  document.querySelector('.ticket-input')?.select();
 };
 
 const stopEditing = () => {
@@ -122,11 +132,11 @@ const stopEditing = () => {
 };
 
 /** Enter saves, an empty key removes it; Escape or clicking away cancels. */
-const renderJiraEditor = (card) => {
-  const form = el('form', 'jira-editor');
-  const input = el('input', 'jira-input');
-  Object.assign(input, { value: editing.value, placeholder: 'PROJ-1234', maxLength: 500, spellcheck: false, autocomplete: 'off' });
-  input.setAttribute('aria-label', 'Jira key or link');
+const renderTicketEditor = (card) => {
+  const form = el('form', 'ticket-editor');
+  const input = el('input', 'ticket-input');
+  Object.assign(input, { value: editing.value, placeholder: 'PROJ-1234 or ticket link', maxLength: 500, spellcheck: false, autocomplete: 'off' });
+  input.setAttribute('aria-label', 'Ticket ID or link');
   input.addEventListener('input', () => {
     editing.value = input.value;
     input.setCustomValidity('');
@@ -141,29 +151,29 @@ const renderJiraEditor = (card) => {
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const text = input.value.trim();
-    const key = text ? parseJiraKey(text) : null;
+    const key = text ? parseTicketId(text) : null;
     if (text && !key) {
-      input.setCustomValidity('Enter a key like PROJ-1234, or a Jira link.');
+      input.setCustomValidity('Enter an ID like PROJ-1234, or a ticket link.');
       input.reportValidity();
       return;
     }
-    saveJiraKey(card, key);
+    saveTicket(card, key);
   });
   form.append(input);
   return form;
 };
 
-/** The Jira key and its change button, the editor, or an add button when there is no key. */
-const renderJira = (card) => {
-  if (editing?.id === card.id) return [renderJiraEditor(card)];
+/** The ticket and its change button, the editor, or an add button when there is none. */
+const renderTicket = (card) => {
+  if (editing?.id === card.id) return [renderTicketEditor(card)];
   const button = (className, text, title) => {
     const node = el('button', className, text);
     Object.assign(node, { type: 'button', title });
     node.addEventListener('click', () => startEditing(card));
     return node;
   };
-  if (!card.jiraKey) return [button('tag jira-add', '+ Jira', 'Add a Jira key')];
-  return [el('span', 'tag jira', card.jiraKey), button('icon-button jira-change', '✎', 'Change or remove the Jira key')];
+  if (!card.ticket) return [button('tag ticket-add', '+ Ticket', 'Add a ticket')];
+  return [el('span', 'tag ticket', card.ticket), button('icon-button ticket-change', '✎', 'Change or remove the ticket')];
 };
 
 const renderCard = (card) => {
@@ -173,12 +183,14 @@ const renderCard = (card) => {
   node.dataset.id = card.id;
   node.addEventListener('dragstart', (event) => {
     dragging = true;
+    dragOrigin = { list: node.parentNode, next: node.nextElementSibling };
     event.dataTransfer.setData('text/plain', card.id);
     event.dataTransfer.effectAllowed = 'move';
     node.classList.add('dragging');
   });
   node.addEventListener('dragend', () => {
     dragging = false;
+    dragOrigin = null;
     showDropTarget(null);
     render();
   });
@@ -200,9 +212,9 @@ const renderCard = (card) => {
     open.addEventListener('click', () => openSession(card.id));
     top.append(open);
   }
-  const jira = el('div', 'card-jira');
-  jira.append(...renderJira(card));
-  node.append(top, el('h3', 'title', card.title), jira);
+  const ticket = el('div', 'card-ticket');
+  ticket.append(...renderTicket(card));
+  node.append(top, el('h3', 'title', card.title), ticket);
 
   const tags = el('div', 'tags');
   tags.append(el('span', `badge badge-${card.source}`, SOURCE_LABELS[card.source]));
@@ -217,6 +229,28 @@ const renderCard = (card) => {
   tags.append(time);
   node.append(tags);
   return node;
+};
+
+/** How many of the shown sessions are working or waiting on the user, or else what is in Doing. */
+const renderSummary = (cards) => {
+  const counts = ['working', 'waiting'].map((status) => [status, cards.filter((card) => card.liveStatus === status).length]);
+  const parts = counts
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => {
+      const part = el('span', `summary-part summary-${status}`);
+      part.append(el('strong', '', String(count)), ` ${STATUS_LABELS[status].toLowerCase()}`);
+      return part;
+    });
+  if (!parts.length) {
+    const doing = cards.filter((card) => card.column === 'doing');
+    const part = el('span', 'summary-part');
+    if (doing.length) {
+      part.append(el('strong', '', String(doing.length)), ' in Doing');
+      part.title = doing.map((card) => card.title).join('\n');
+    } else part.textContent = 'Nothing in Doing';
+    parts.push(part);
+  }
+  $('#summary').replaceChildren(...parts);
 };
 
 const usageLevel = (used) => (used >= 90 ? 'high' : used >= 70 ? 'mid' : 'low');
@@ -234,21 +268,78 @@ const renderUsageWindow = (window, fetchedAt) => {
   return node;
 };
 
+// The limits both sources usually report, drawn empty when a source reports none.
+const PLACEHOLDER_WINDOWS = ['5h', 'Weekly'];
+
+const renderPlaceholderWindow = (label) => {
+  const node = el('div', 'usage-window usage-placeholder');
+  node.append(el('span', 'usage-label', label), el('span', 'meter'), el('span', 'usage-left', '–'));
+  return node;
+};
+
+/**
+ * Usage for every installed source, in the filter's order. One with no answer yet gets an
+ * empty entry, so it shows as a placeholder like one that answered without figures.
+ */
+const usageBySource = () =>
+  Object.keys(SOURCE_LABELS)
+    .filter((source) => !board.missingSources?.includes(source))
+    .map((source) => board.usage?.find((usage) => usage.source === source) ?? { source, plan: null, windows: [], error: null });
+
+const mostUsed = (windows) => windows.reduce((most, window) => (!most || window.usedPercent > most.usedPercent ? window : most), null);
+
+/**
+ * The limit to show in the top bar: the 5h one, unless a longer limit is nearly used up
+ * (the meter's red level), since that one would then stop the session first.
+ */
+const headlineWindow = (windows) => {
+  const fiveHour = windows.find((window) => window.label === '5h');
+  const nearlyUsed = mostUsed(windows.filter((window) => window !== fiveHour && window.usedPercent >= 90));
+  return nearlyUsed ?? fiveHour ?? mostUsed(windows);
+};
+
+/** Each source's headline limit, for the top bar; the full figures open below it. */
+const renderUsageCompact = (usage) => {
+  if (!usage.length) return [el('span', 'usage-note', 'Usage')];
+  return usage.map((source) => {
+    const part = el('span', 'usage-compact-source');
+    part.append(el('span', `badge badge-${source.source}`, SOURCE_LABELS[source.source]));
+    const shown = headlineWindow(source.windows);
+    if (!shown) {
+      part.title = `No usage data from ${SOURCE_LABELS[source.source]}`;
+      part.append(el('span', 'usage-left usage-placeholder', '–%'));
+      return part;
+    }
+    const used = Math.min(100, Math.max(0, shown.usedPercent));
+    part.title = `${shown.label} limit: ${Math.round(100 - used)}% left`;
+    part.classList.add(`level-${usageLevel(used)}`);
+    part.append(el('span', 'usage-left', `${Math.round(100 - used)}%`));
+    return part;
+  });
+};
+
 const renderUsage = () => {
-  const usage = board.usage ?? [];
-  const section = $('#usage');
-  section.hidden = false;
+  const usage = usageBySource();
+  const picker = $('#usage');
+  picker.hidden = false;
+  picker.querySelector('.usage-compact').replaceChildren(...renderUsageCompact(usage));
+  const panel = picker.querySelector('.usage-panel');
   if (!usage.length) {
-    section.replaceChildren(el('span', 'usage-note', 'No usage data yet'));
+    panel.replaceChildren(el('span', 'usage-note', 'No usage data yet'));
     return;
   }
-  section.replaceChildren(
+  panel.replaceChildren(
     ...usage.map((source) => {
       const row = el('div', 'usage-source');
-      row.append(el('span', `badge badge-${source.source}`, SOURCE_LABELS[source.source]));
-      if (source.plan) row.append(el('span', 'plan', source.plan));
+      const heading = el('div', 'usage-heading');
+      heading.append(el('span', `badge badge-${source.source}`, SOURCE_LABELS[source.source]));
+      if (source.plan) heading.append(el('span', 'plan', source.plan));
+      row.append(heading);
       if (source.windows.length) row.append(...source.windows.map((window) => renderUsageWindow(window, source.fetchedAt)));
-      else row.append(el('span', 'usage-note', source.error ?? 'No limits reported'));
+      else {
+        row.append(...PLACEHOLDER_WINDOWS.map(renderPlaceholderWindow));
+        row.append(el('span', 'usage-note', source.error ?? (source.fetchedAt ? 'No limits reported' : 'No usage data yet')));
+      }
       // Claude is read every 30 minutes, and kept when its rate-limited endpoint says no.
       if (source.windows.length && Date.now() - source.fetchedAt > 10 * 60_000) {
         row.append(el('span', 'usage-note', `as of ${timeAgo(source.fetchedAt)}`));
@@ -322,7 +413,13 @@ document.addEventListener('dragover', (event) => {
   event.dataTransfer.dropEffect = 'move';
   const section = columnAt(event.clientX, event.clientY);
   showDropTarget(section);
-  if (!section || !board.columns.find((c) => c.id === section.dataset.column)?.manualOrder) return;
+  if (!section || !board.columns.find((c) => c.id === section.dataset.column)?.manualOrder) {
+    // A sorted column places the card itself, so the preview goes back to where it started.
+    if (dragOrigin && (dragged.parentNode !== dragOrigin.list || dragged.nextElementSibling !== dragOrigin.next)) {
+      dragOrigin.list.insertBefore(dragged, dragOrigin.next);
+    }
+    return;
+  }
   // Moves the card itself to show where it will land; dragend re-renders from the board.
   const list = section.querySelector('.cards');
   const below = cardBelow(list, event.clientY);
@@ -352,6 +449,7 @@ const render = ({ force = false } = {}) => {
   renderUsage();
   // The server sends cards in the order the user dragged them into.
   const visible = board.cards.filter(matchesFilters);
+  renderSummary(visible);
   // Same as the server, so a card dropped into Parked lands in place before the next poll.
   const byRecent = (a, b) => (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0);
   const cardsIn = (column) => {
@@ -440,20 +538,20 @@ const openSession = async (id) => {
   }
 };
 
-const saveJiraKey = async (card, key) => {
-  const changed = key !== card.jiraKey;
-  card.jiraKey = key;
+const saveTicket = async (card, key) => {
+  const changed = key !== card.ticket;
+  card.ticket = key;
   stopEditing();
   if (!changed) return;
   try {
-    await send('PUT', '/api/jira', { id: card.id, key });
+    await send('PUT', '/api/ticket', { id: card.id, key });
   } catch (error) {
     showError(`Saving failed: ${error.message}`);
   }
   poll();
 };
 
-for (const [selector, key] of [['#filter-repo', 'hiddenRepos'], ['#filter-source', 'hiddenSources']]) {
+for (const [selector, key] of [['#filter-repo', 'hiddenRepos'], ['#filter-source', 'hiddenSources'], ['#filter-ticket', 'hiddenTickets']]) {
   const picker = $(selector);
   const hide = (values) => {
     view[key] = values;
@@ -467,7 +565,9 @@ for (const [selector, key] of [['#filter-repo', 'hiddenRepos'], ['#filter-source
     if (only) hide(values(picker.querySelectorAll('input')).filter((value) => value !== only.dataset.value));
   });
   picker.querySelector('.multi-select-clear').addEventListener('click', () => hide([]));
-  // Closes like a select: on Escape, or a click elsewhere below.
+}
+// The filters and the usage panel close like a select: on Escape, or a click elsewhere.
+for (const picker of document.querySelectorAll('.multi-select')) {
   picker.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || !picker.open) return;
     picker.open = false;

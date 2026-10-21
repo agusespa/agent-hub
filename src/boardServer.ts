@@ -6,7 +6,7 @@ import path from 'node:path';
 import { cardsStartedWorking, isOnBoard, orderCards, toCard } from './board.js';
 import { PROJECT_ROOT } from './app.js';
 import { repoNameForCwd } from './git.js';
-import { isJiraKey, JiraKeyStore } from './jira.js';
+import { isTicketId, TicketStore } from './ticket.js';
 import { openInApp, sessionUrl } from './openSession.js';
 import { PlacementStore } from './placements.js';
 import { CLAUDE_BIN, fetchClaudeSessions, fetchClaudeUsage } from './sources/claude.js';
@@ -127,7 +127,7 @@ export const startBoardServer = async ({
   codexBin?: string;
 }): Promise<BoardServer> => {
   const placements = new PlacementStore(path.join(dataDir, 'placements.json'));
-  const jiraKeys = new JiraKeyStore(path.join(dataDir, 'jira.json'));
+  const tickets = new TicketStore(path.join(dataDir, 'tickets.json'));
   const codex = new CodexAppServer(codexBin);
   const allowedHosts = new Set<string>();
   const claudeUsageCwd = path.join(dataDir, 'claude-usage');
@@ -148,20 +148,20 @@ export const startBoardServer = async ({
       settle('claude', fetchClaudeSessions(claudeBin, claudeUsageCwd), errors, missing),
       settle('codex', codex.listThreads(), errors, missing),
       placements.read(),
-      jiraKeys.read(),
+      tickets.read(),
     ]);
     if (missing.size === Object.keys(SOURCE_NAMES).length) {
       errors.push(`Neither Claude Code nor Codex was found: no \`${claudeBin}\` on PATH and no ${codexBin}. Install one.`);
     }
     const records = [...claude, ...codexThreads].filter((record) =>
-      isOnBoard(record, { placement: placed.columns.get(record.id), jiraKey: keys.get(record.id) }),
+      isOnBoard(record, { placement: placed.columns.get(record.id), ticket: keys.get(record.id) }),
     );
     const cards = await Promise.all(
       records.map(async (record) =>
         toCard(record, {
           repo: record.repoHint ?? (await repoNameForCwd(record.cwd)),
           placement: placed.columns.get(record.id),
-          jiraKey: keys.get(record.id),
+          ticket: keys.get(record.id),
         }),
       ),
     );
@@ -244,12 +244,12 @@ export const startBoardServer = async ({
         return sendJson(res, 200, { ok: true });
       }
 
-      if (req.method === 'PUT' && url.pathname === '/api/jira') {
+      if (req.method === 'PUT' && url.pathname === '/api/ticket') {
         const { id, key } = await readJson(req);
-        if (!isCardId(id) || !(key === null || isJiraKey(key))) return sendJson(res, 400, { error: 'invalid Jira key' });
-        await jiraKeys.set(id, key);
+        if (!isCardId(id) || !(key === null || isTicketId(key))) return sendJson(res, 400, { error: 'invalid ticket' });
+        await tickets.set(id, key);
         inFlight = undefined;
-        console.log(key ? `Set ${key} on ${id}` : `Removed the Jira key from ${id}`);
+        console.log(key ? `Set ${key} on ${id}` : `Removed the ticket from ${id}`);
         return sendJson(res, 200, { ok: true });
       }
 

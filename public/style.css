@@ -57,11 +57,6 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-.toolbar h1 {
-  margin: 0 8px 0 0;
-  font-size: 17px;
-}
-
 .toolbar .filter {
   display: flex;
   align-items: center;
@@ -176,25 +171,143 @@ body {
 }
 
 .updated {
-  margin-left: auto;
   color: var(--muted);
   font-size: 12px;
 }
 
-.usage {
+/* An accent-tinted panel with a divider after it, so the counts read apart
+   from the filter buttons beside them. */
+.summary {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 32px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  margin-right: 17px;
+  padding: 5px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  color: var(--muted);
+}
+
+.summary::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: -17px;
+  bottom: 2px;
+  width: 1px;
+  background: var(--border);
+}
+
+.summary:empty {
+  display: none;
+}
+
+.summary-part {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.summary-part strong {
+  color: var(--text);
+}
+
+.summary-working::before,
+.summary-waiting::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin-right: 2px;
+  border-radius: 50%;
+}
+
+.summary-working::before {
+  background: var(--working);
+}
+
+.summary-waiting::before {
+  background: var(--waiting);
+}
+
+/* Pushes itself and the updated time to the right end of the toolbar. */
+.usage {
+  margin-left: auto;
   font-size: 12px;
+}
+
+.usage summary {
+  max-width: none;
+}
+
+.usage-compact,
+.usage-compact-source {
+  display: flex;
+  align-items: center;
+}
+
+.usage-compact {
+  gap: 10px;
+}
+
+.usage-compact-source {
+  gap: 4px;
+}
+
+.usage-compact-source.level-mid .usage-left {
+  color: var(--waiting);
+  font-weight: 600;
+}
+
+/* Opens under the usage summary, lined up with its right edge so it stays on screen. */
+.usage-panel {
+  right: 0;
+  left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: max-content;
+  min-width: 280px;
+  max-width: 360px;
+  padding: 10px 12px;
 }
 
 .usage-source {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 16px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* A rule between sources, so each one's windows read as a group. */
+.usage-source + .usage-source {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.usage-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.usage-panel .usage-window {
+  white-space: nowrap;
+}
+
+.usage-panel .usage-label {
+  min-width: 48px;
+}
+
+/* An empty, dashed meter where a source reported no figures. */
+.usage-placeholder {
+  color: var(--muted);
+}
+
+.usage-placeholder .meter {
+  background: none;
+  border: 1px dashed var(--muted);
+  opacity: 0.6;
 }
 
 .plan,
@@ -218,7 +331,7 @@ body {
 }
 
 .meter {
-  width: 72px;
+  width: 56px;
   height: 6px;
   border-radius: 999px;
   background: var(--border);
@@ -258,7 +371,7 @@ body {
 
 .board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(280px, 1fr));
+  grid-template-columns: repeat(4, minmax(320px, 1fr));
   gap: 12px;
   padding: 16px;
   overflow-x: auto;
@@ -302,7 +415,7 @@ body {
 .cards {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .empty {
@@ -311,12 +424,16 @@ body {
   font-size: 12px;
 }
 
+/* One gap between rows, so a ticket or its editor gets the same room as the rest. */
 .card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 3px solid var(--codex);
-  border-radius: 6px;
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 14px 16px 12px;
   cursor: grab;
 }
 
@@ -331,7 +448,7 @@ body {
 .card-top {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 11px;
 }
 
@@ -381,8 +498,9 @@ body {
 }
 
 .title {
-  margin: 6px 0 4px;
+  margin: 0;
   font-size: 14px;
+  line-height: 1.4;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -424,18 +542,28 @@ body {
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='4.5' cy='3.5' r='1.75'/%3E%3Ccircle cx='4.5' cy='12.5' r='1.75'/%3E%3Ccircle cx='11.5' cy='4.5' r='1.75'/%3E%3Cpath d='M4.5 5.25v5.5M11.5 6.25c0 3-7 2-7 4.5'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
+/* Ruled off from the ticket above, so the session's state reads as its own footer. */
 .tags {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 
-.card-jira {
+/* As tall with or without a ticket, so the card keeps its height while editing. */
+.card-ticket {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.ticket-editor {
+  display: flex;
+  flex: 1;
 }
 
 .tag {
@@ -445,6 +573,31 @@ body {
   font-size: 12px;
   color: var(--text);
   text-decoration: none;
+}
+
+/* A light tint with an icon: apart from the faint add button, but quieter than the repo pill. */
+.tag.ticket {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 2px 8px;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  font-family: ui-monospace, monospace;
+  font-weight: 400;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+/* A mask, like the branch icon, so it takes the accent colour. */
+.tag.ticket::before {
+  content: '';
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  background-color: var(--accent);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M2 6V4.5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1V6a2 2 0 0 0 0 4v1.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V10a2 2 0 0 0 0-4Z'/%3E%3Cpath d='M10 3.5v9' stroke-dasharray='1.5 1.5'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 .waiting-for {
@@ -476,53 +629,65 @@ body {
 }
 
 /* Shows on the card under the pointer, or when tabbed to. */
-.jira-change {
-  padding: 0;
-  font-size: 12px;
+.ticket-change {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
   opacity: 0;
 }
 
-.card:hover .jira-change,
-.jira-change:focus-visible {
+.ticket-change:hover {
+  background: var(--column);
+}
+
+.card:hover .ticket-change,
+.ticket-change:focus-visible {
   opacity: 1;
 }
 
 @media (hover: none) {
-  .jira-change {
+  .ticket-change {
     opacity: 1;
   }
 }
 
 /* On every card without a key, so it stays faint until pointed at. */
-.jira-add {
+.ticket-add {
   border-color: transparent;
   padding-left: 0;
   background: none;
   color: var(--muted);
   font: inherit;
   font-size: 11px;
+  line-height: 18px;
   opacity: 0.6;
   cursor: pointer;
 }
 
-.jira-add:hover,
-.jira-add:focus-visible {
+.ticket-add:hover,
+.ticket-add:focus-visible {
   color: var(--accent);
   opacity: 1;
 }
 
-.jira-input {
-  width: 12em;
-  padding: 0 6px;
+/* Fills the row, so a pasted ticket link fits. */
+.ticket-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 8px;
   border: 1px solid var(--accent);
   border-radius: 4px;
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
   background: var(--surface);
   color: var(--text);
   font: inherit;
+  font-family: ui-monospace, monospace;
   font-size: 12px;
+  line-height: 18px;
 }
 
-.jira-input:invalid {
+.ticket-input:invalid {
   border-color: var(--closed);
 }
 
