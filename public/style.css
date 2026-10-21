@@ -205,11 +205,14 @@ body {
 }
 
 /* An accent-tinted panel with a divider after it, so the counts read apart
-   from the filter buttons beside them. */
+   from the filter buttons beside them. The min-width fits the usual "12 working"
+   or "3 in Doing", so the filters stay put as the counts change. */
 .summary {
   position: relative;
   display: flex;
+  justify-content: center;
   gap: 12px;
+  min-width: 118px;
   margin-right: 17px;
   padding: 5px 14px;
   border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
@@ -241,6 +244,7 @@ body {
 
 .summary-part strong {
   color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .summary-working::before,
