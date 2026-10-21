@@ -459,7 +459,8 @@ const render = ({ force = false } = {}) => {
     return view.oldestFirst.includes(column.id) ? cards.reverse() : cards;
   };
   $('#board').replaceChildren(...board.columns.map((column) => renderColumn(column, cardsIn(column))));
-  $('#updated').textContent = `Updated ${new Date(board.generatedAt).toLocaleTimeString()}`;
+  // A two-digit hour keeps the text one width, so the toolbar doesn't shift as the time changes.
+  $('#updated').textContent = `Updated ${new Date(board.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   const errors = $('#errors');
   errors.hidden = board.errors.length === 0;
   errors.replaceChildren(...board.errors.map((message) => el('p', '', message)));
@@ -477,10 +478,16 @@ const poll = async () => {
     const response = await fetch('/api/board');
     if (!response.ok) throw new Error(`Board request failed (${response.status})`);
     board = await response.json();
+    $('#updated').classList.remove('stale');
+    $('#updated').title = `Up to date. Refreshes every ${Math.round(board.pollIntervalMs / 1000)}s.`;
     render();
     watchForChanges();
   } catch (error) {
-    showError(`Could not load sessions: ${error.message}`);
+    // The next poll retries, so this flags the time as stale rather than raising the banner.
+    const updated = $('#updated');
+    if (!board) updated.textContent = 'Not loaded';
+    updated.classList.add('stale');
+    updated.title = `Could not load sessions: ${error.message}. Retrying every ${Math.round((board?.pollIntervalMs ?? 5000) / 1000)}s.`;
   }
   pollTimer = setTimeout(poll, board?.pollIntervalMs ?? 5000);
 };

@@ -171,8 +171,37 @@ body {
 }
 
 .updated {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--muted);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A grey tick while reloads work, a red "!" once one fails; the title says which. */
+.updated::before {
+  content: '✓';
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--surface);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.updated:empty::before {
+  display: none;
+}
+
+.updated.stale::before {
+  content: '!';
+  background: var(--closed);
+  font-size: 9px;
 }
 
 /* An accent-tinted panel with a divider after it, so the counts read apart
@@ -253,6 +282,12 @@ body {
 
 .usage-compact-source {
   gap: 4px;
+}
+
+/* A rule between sources, matching the one in the open panel. */
+.usage-compact-source + .usage-compact-source {
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
 }
 
 .usage-compact-source.level-mid .usage-left {
