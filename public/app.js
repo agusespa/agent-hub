@@ -424,6 +424,7 @@ const renderColumn = (column, cards) => {
   const section = el('section', 'column');
   section.dataset.column = column.id;
   const header = el('h2', 'column-title', column.title);
+  header.append(el('span', 'count', String(cards.length)));
   if (column.manualOrder) {
     const hint = el('span', 'sort-toggle sort-manual', '↑↓');
     hint.dataset.tip = 'Custom order: drag cards to reorder them.';
@@ -442,7 +443,6 @@ const renderColumn = (column, cards) => {
     });
     header.append(toggle);
   }
-  header.append(el('span', 'count', String(cards.length)));
   const list = el('div', 'cards');
   if (cards.length) list.append(...cards.map(renderCard));
   else list.append(el('p', 'empty', 'Nothing here'));

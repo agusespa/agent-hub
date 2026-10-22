@@ -536,9 +536,12 @@ body {
   color: var(--muted);
 }
 
-/* Sits next to the column name; the count stays on the right. */
+/* The count and the sort arrow after it sit at the right edge. */
+.column-title .count {
+  margin: 0 6px 0 auto;
+}
+
 .sort-toggle {
-  margin: 0 auto 0 6px;
   font-size: 12px;
   text-transform: none;
   letter-spacing: 0;
@@ -551,8 +554,7 @@ body {
   cursor: default;
 }
 
-/* A tooltip that shows sooner than the browser's own `title` one. It opens to the
-   right, so a hint near a column's left edge isn't cut off by the board. */
+/* A tooltip that shows sooner than the browser's own `title` one. */
 [data-tip] {
   position: relative;
 }
@@ -582,6 +584,13 @@ body {
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.1s, visibility 0.1s;
+}
+
+/* The sort arrow sits at a column's right edge, so its tooltip opens to the left and
+   stays inside the board. */
+.sort-toggle[data-tip]::after {
+  left: auto;
+  right: -4px;
 }
 
 [data-tip]:hover::after,
