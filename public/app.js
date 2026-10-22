@@ -452,8 +452,8 @@ const renderColumn = (column, cards) => {
 
 /**
  * The column a card dragged to (x, y) drops into: the nearest one across, then down.
- * Below a short column still counts as that column, and the stacked phone layout,
- * where every column spans the width, goes by height.
+ * A gap between columns or the board's edge still counts as the nearest column, and
+ * the stacked phone layout, where every column spans the width, goes by height.
  */
 const columnAt = (x, y) => {
   let nearest = null;
@@ -475,7 +475,7 @@ const showDropTarget = (section) => {
   section?.classList.add('drop-target');
 };
 
-// The whole page takes drops, so a card dragged from far down reaches a short column.
+// The whole page takes drops, so crossing the gap between columns doesn't flicker the target.
 document.addEventListener('dragover', (event) => {
   const dragged = $('.card.dragging');
   if (!dragged) return;
@@ -526,7 +526,10 @@ const updateColumns = (sections) => {
     const [header, list] = section.children;
     const [oldHeader, oldList] = current[i].children;
     if (oldHeader.outerHTML !== header.outerHTML) oldHeader.replaceWith(header);
+    // Each column scrolls on its own, so a poll keeps the place you scrolled to.
+    const { scrollTop } = oldList;
     oldList.replaceWith(list);
+    list.scrollTop = scrollTop;
   });
 };
 
