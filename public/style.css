@@ -524,6 +524,17 @@ body {
   border: 2px solid transparent;
 }
 
+/* Doing is where the live work is, so it is tinted and outlined to stand out a little. */
+.column[data-column='doing'] {
+  background: color-mix(in srgb, var(--accent) 7%, var(--column));
+  border-color: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.column[data-column='doing'] .column-title {
+  color: var(--accent);
+}
+
+/* After Doing, so a drop target looks the same in every column. */
 .column.drop-target {
   background: var(--drop);
   border-color: var(--accent);
