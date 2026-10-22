@@ -1,7 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 
 const SETTINGS_KEY = 'agent-hub:view';
-const STATUS_LABELS = { working: 'Working', waiting: 'Waiting on me', idle: 'Idle' };
+const STATUS_LABELS = { working: 'Working', waiting: 'Input needed', idle: 'Idle' };
 const SOURCE_LABELS = { claude: 'Claude', codex: 'Codex' };
 
 let board = null;
@@ -50,6 +50,17 @@ const timeAgo = (ms) => {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
 };
+
+/**
+ * The time a card shows and Parked and Done sort by: the user's last prompt, or when the
+ * session started where Live status saw none. Last active moves even with no new prompt.
+ */
+const cardTime = (card) =>
+  card.lastPromptAt
+    ? { at: card.lastPromptAt, label: 'Your last prompt' }
+    : card.createdAt
+      ? { at: card.createdAt, label: 'Started' }
+      : { at: card.lastActiveAt, label: 'Last active' };
 
 // Today's resets show the time only; later ones add the weekday.
 const resetTime = (ms) =>
@@ -221,13 +232,11 @@ const renderCard = (card) => {
   const tags = el('div', 'tags');
   tags.append(el('span', `badge badge-${card.source}`, SOURCE_LABELS[card.source]));
   if (card.liveStatus) {
-    const status = el('span', `status status-${card.liveStatus}`, STATUS_LABELS[card.liveStatus]);
-    if (card.waitingFor) status.title = card.waitingFor;
-    tags.append(status);
+    tags.append(el('span', `status status-${card.liveStatus}`, STATUS_LABELS[card.liveStatus]));
   }
-  if (card.waitingFor) tags.append(el('span', 'tag waiting-for', card.waitingFor));
-  const time = el('span', 'time', timeAgo(card.lastActiveAt));
-  if (card.lastActiveAt) time.title = `Last active ${new Date(card.lastActiveAt).toLocaleString()}`;
+  const { at, label } = cardTime(card);
+  const time = el('span', 'time', timeAgo(at));
+  if (at) time.title = `${label} ${new Date(at).toLocaleString()}`;
   tags.append(time);
   node.append(tags);
   return node;
@@ -415,11 +424,17 @@ const renderColumn = (column, cards) => {
   const section = el('section', 'column');
   section.dataset.column = column.id;
   const header = el('h2', 'column-title', column.title);
-  if (!column.manualOrder) {
+  if (column.manualOrder) {
+    const hint = el('span', 'sort-toggle sort-manual', '↑↓');
+    hint.dataset.tip = 'Custom order: drag cards to reorder them.';
+    hint.setAttribute('aria-label', hint.dataset.tip);
+    header.append(hint);
+  } else {
     const oldestFirst = view.oldestFirst.includes(column.id);
-    const toggle = el('button', 'icon-button sort-toggle', oldestFirst ? 'Oldest ↑' : 'Newest ↓');
+    const toggle = el('button', 'icon-button sort-toggle', oldestFirst ? '↑' : '↓');
     toggle.type = 'button';
-    toggle.title = `Sorted by last active, ${oldestFirst ? 'oldest' : 'newest'} first. Click to reverse.`;
+    toggle.dataset.tip = `Sorted by your last prompt, ${oldestFirst ? 'oldest' : 'newest'} first, or by when the session started if Live status saw none. Click for ${oldestFirst ? 'newest' : 'oldest'} first.`;
+    toggle.setAttribute('aria-label', toggle.dataset.tip);
     toggle.addEventListener('click', () => {
       view.oldestFirst = oldestFirst ? view.oldestFirst.filter((id) => id !== column.id) : [...view.oldestFirst, column.id];
       saveView();
@@ -497,6 +512,24 @@ document.addEventListener('drop', (event) => {
   place(id, column.id, ordered ? (dragged.nextElementSibling?.dataset.id ?? null) : undefined);
 });
 
+/**
+ * Puts redrawn columns on the page. A header that hasn't changed stays, so a hovered
+ * sort tooltip doesn't close and reopen on every poll.
+ */
+const updateColumns = (sections) => {
+  const current = [...$('#board').children];
+  if (current.length !== sections.length || sections.some((section, i) => section.dataset.column !== current[i].dataset.column)) {
+    $('#board').replaceChildren(...sections);
+    return;
+  }
+  sections.forEach((section, i) => {
+    const [header, list] = section.children;
+    const [oldHeader, oldList] = current[i].children;
+    if (oldHeader.outerHTML !== header.outerHTML) oldHeader.replaceWith(header);
+    oldList.replaceWith(list);
+  });
+};
+
 /** Holds still while a card is dragged or edited; `force` redraws an open editor. */
 const render = ({ force = false } = {}) => {
   if (!board || dragging || (editing && !force)) return;
@@ -507,14 +540,14 @@ const render = ({ force = false } = {}) => {
   const visible = board.cards.filter(matchesFilters);
   renderSummary(visible);
   // Same as the server, so a card dropped into Parked lands in place before the next poll.
-  const byRecent = (a, b) => (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0);
+  const byNewest = (a, b) => (cardTime(b).at ?? 0) - (cardTime(a).at ?? 0);
   const cardsIn = (column) => {
     const cards = visible.filter((card) => card.column === column.id);
     if (column.manualOrder) return cards;
-    cards.sort(byRecent);
+    cards.sort(byNewest);
     return view.oldestFirst.includes(column.id) ? cards.reverse() : cards;
   };
-  $('#board').replaceChildren(...board.columns.map((column) => renderColumn(column, cardsIn(column))));
+  updateColumns(board.columns.map((column) => renderColumn(column, cardsIn(column))));
   // A two-digit hour keeps the text one width, so the toolbar doesn't shift as the time changes.
   $('#updated').textContent = `Updated ${new Date(board.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   renderErrors();

@@ -12,32 +12,36 @@ interface CardContext {
   repo: string;
   placement: ColumnId | undefined;
   ticket?: string;
+  lastPromptAt?: number;
 }
 
 /** How long a session can sit unused before it drops off the board. */
 export const STALE_AFTER_MS = 45 * 24 * 60 * 60 * 1000;
 
 /**
- * Sessions to show: those active in the last 45 days, running, or kept by the user by
- * moving the card out of Parked or setting a ticket on it. A session with no timestamps
- * is shown, as its age is unknown. A hidden session comes back once it is used again.
+ * Sessions to show: those the user sent a prompt in the last 45 days, or started then if
+ * the hooks saw no prompt, those running, and those kept by the user by moving the card
+ * out of Parked or setting a ticket on it. Last active only counts with neither time, as
+ * it moves when Claude or Codex rewrite a session. A session with no timestamps is shown,
+ * as its age is unknown. A hidden session comes back once it gets a prompt or runs again.
  */
 export const isOnBoard = (
   record: SessionRecord,
-  { placement, ticket }: Pick<CardContext, 'placement' | 'ticket'>,
+  { placement, ticket, lastPromptAt }: Pick<CardContext, 'placement' | 'ticket' | 'lastPromptAt'>,
   now = Date.now(),
 ): boolean => {
-  const lastActive = record.lastActiveAt ?? record.createdAt;
+  const lastUsed = lastPromptAt ?? record.createdAt ?? record.lastActiveAt;
   const kept = (placement ?? DEFAULT_COLUMN) !== DEFAULT_COLUMN || ticket !== undefined;
-  return record.liveStatus !== null || lastActive === undefined || now - lastActive <= STALE_AFTER_MS || kept;
+  return record.liveStatus !== null || lastUsed === undefined || now - lastUsed <= STALE_AFTER_MS || kept;
 };
 
 /** Cards start in Parked until the user moves them or the session starts working (see `cardsStartedWorking`). */
-export const toCard = (record: SessionRecord, { repo, placement, ticket }: CardContext): Card => ({
+export const toCard = (record: SessionRecord, { repo, placement, ticket, lastPromptAt }: CardContext): Card => ({
   ...record,
   repo,
   ticket: ticket ?? null,
   column: placement ?? DEFAULT_COLUMN,
+  lastPromptAt,
 });
 
 /** Working, or waiting on the user in the middle of a turn. */
@@ -66,15 +70,17 @@ const MANUAL_COLUMNS = new Set<ColumnId>(COLUMNS.filter((column) => column.manua
 /**
  * Puts the cards of each manually ordered column in the order the user dragged them
  * into. Cards not ordered yet, such as new sessions, come first, newest session first,
- * so they hold still while their session works. The other columns come most recently
- * active first.
+ * so they hold still while their session works. The other columns come by the user's
+ * last prompt, newest first, or by when the session was created where the hooks saw
+ * none. A session's last active time moves when Claude or Codex touch it, even with
+ * no new prompt, so it would shuffle them.
  */
 export const orderCards = (cards: Card[], order: Placements['order']): Card[] => {
   const ranks = new Map(
     cards.map((card) => [card, MANUAL_COLUMNS.has(card.column) ? (order[card.column]?.indexOf(card.id) ?? -1) : -1]),
   );
   const recency = (card: Card) =>
-    (MANUAL_COLUMNS.has(card.column) ? (card.createdAt ?? card.lastActiveAt) : card.lastActiveAt) ?? 0;
+    (MANUAL_COLUMNS.has(card.column) ? undefined : card.lastPromptAt) ?? card.createdAt ?? card.lastActiveAt ?? 0;
   return [...cards].sort((a, b) => {
     const rankA = ranks.get(a) ?? -1;
     const rankB = ranks.get(b) ?? -1;

@@ -8,6 +8,7 @@ import { PROJECT_ROOT } from './app.js';
 import { repoNameForCwd } from './git.js';
 import { HookInstaller, type HookState } from './hookInstall.js';
 import { HOOK_STATUS_DIR, HookStatusMerge, HookStatusStore, lastEventBySource } from './hookStatus.js';
+import { LAST_PROMPT_DIR, LastPromptStore } from './lastPrompt.js';
 import { isTicketId, TicketStore } from './ticket.js';
 import { openInApp, sessionUrl } from './openSession.js';
 import { PlacementStore } from './placements.js';
@@ -136,6 +137,7 @@ export const startBoardServer = async ({
 }): Promise<BoardServer> => {
   const placements = new PlacementStore(path.join(dataDir, 'placements.json'));
   const tickets = new TicketStore(path.join(dataDir, 'tickets.json'));
+  const lastPrompts = new LastPromptStore(path.join(dataDir, LAST_PROMPT_DIR), path.join(dataDir, 'last-prompts.json'));
   const codex = new CodexAppServer(codexBin);
   const hookStatuses = new HookStatusStore(path.join(dataDir, HOOK_STATUS_DIR));
   const hookMerge = new HookStatusMerge();
@@ -158,18 +160,19 @@ export const startBoardServer = async ({
 
   const buildBoard = async (): Promise<Board> => {
     const errors: string[] = [];
-    const [claude, codexThreads, placed, keys, hooked] = await Promise.all([
+    const [claude, codexThreads, placed, keys, hooked, prompted] = await Promise.all([
       settle('claude', fetchClaudeSessions(claudeBin, claudeUsageCwd), errors, missing),
       settle('codex', codex.listThreads(), errors, missing),
       placements.read(),
       tickets.read(),
       hookStatuses.read(),
+      lastPrompts.read(),
     ]);
     if (missing.size === Object.keys(SOURCE_NAMES).length) {
       errors.push(`Neither Claude Code nor Codex was found: no \`${claudeBin}\` on PATH and no ${codexBin}. Install one.`);
     }
     const records = hookMerge.apply([...claude, ...codexThreads], hooked).filter((record) =>
-      isOnBoard(record, { placement: placed.columns.get(record.id), ticket: keys.get(record.id) }),
+      isOnBoard(record, { placement: placed.columns.get(record.id), ticket: keys.get(record.id), lastPromptAt: prompted.get(record.id) }),
     );
     const cards = await Promise.all(
       records.map(async (record) =>
@@ -177,6 +180,7 @@ export const startBoardServer = async ({
           repo: record.repoHint ?? (await repoNameForCwd(record.cwd)),
           placement: placed.columns.get(record.id),
           ticket: keys.get(record.id),
+          lastPromptAt: prompted.get(record.id),
         }),
       ),
     );

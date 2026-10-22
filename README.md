@@ -9,7 +9,7 @@ A local kanban board of Claude Code and Codex sessions.
 
 ## Saved data
 
-`~/Library/Application Support/Agent Hub/` holds `placements.json` (card columns and order) and `tickets.json` (the ticket you set on each card with + Ticket), both plain JSON. There are no settings. Sessions unused for 45 days drop off the board unless they are running or you moved the card out of Parked or set a ticket on it.
+`~/Library/Application Support/Agent Hub/` holds `placements.json` (card columns and order) and `tickets.json` (the ticket you set on each card with + Ticket), both plain JSON. There are no settings. Sessions you haven't sent a prompt in for 45 days (or started in that time, if Live status saw no prompt) drop off the board unless they are running or you moved the card out of Parked or set a ticket on it.
 
 ## Data sources
 
@@ -17,4 +17,4 @@ The board only reads, and only through documented interfaces: the `claude` CLI a
 
 ## Live status
 
-Off by default. **Live status → Turn on** adds the board's hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`, the only files the board writes outside its own folder; **Turn off** removes just those. With them on, status changes show at once and Codex cards get a status too. The hooks keep only the session id and the event's status, in `live-status/` under the saved data folder. Codex runs a new hook only after you trust it with `/hooks` in the Codex CLI.
+Off by default. **Live status → Turn on** adds the board's hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`, the only files the board writes outside its own folder; **Turn off** removes just those. With them on, status changes show at once, Codex cards get a status too, and Parked and Done sort by when you last sent each session a prompt (otherwise by when it started). The hooks keep only the session id, the event's status and the time of your last prompt, in `live-status/` and `last-prompt/` under the saved data folder; the board copies those times to `last-prompts.json`. Codex runs a new hook only after you trust it with `/hooks` in the Codex CLI.

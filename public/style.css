@@ -195,6 +195,8 @@ body {
   place-items: center;
   width: 12px;
   height: 12px;
+  /* Flex centres it on the line box, which sits a little below the digits; this lifts it level. */
+  margin-bottom: 1px;
   border-radius: 50%;
   background: var(--muted);
   color: var(--surface);
@@ -542,6 +544,53 @@ body {
   letter-spacing: 0;
 }
 
+/* Only a hint: the order comes from dragging, so there is nothing to click. */
+.sort-manual {
+  padding: 0 4px;
+  color: var(--muted);
+  cursor: default;
+}
+
+/* A tooltip that shows sooner than the browser's own `title` one. It opens to the
+   right, so a hint near a column's left edge isn't cut off by the board. */
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 15;
+  top: calc(100% + 6px);
+  left: -4px;
+  width: max-content;
+  max-width: 240px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.1s, visibility 0.1s;
+}
+
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0.25s;
+}
+
 .cards {
   display: flex;
   flex-direction: column;
@@ -728,10 +777,6 @@ body {
   height: 13px;
   background-color: var(--accent);
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M2 6V4.5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1V6a2 2 0 0 0 0 4v1.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V10a2 2 0 0 0 0-4Z'/%3E%3Cpath d='M10 3.5v9' stroke-dasharray='1.5 1.5'/%3E%3C/svg%3E") center / contain no-repeat;
-}
-
-.waiting-for {
-  color: var(--waiting);
 }
 
 .icon-button {

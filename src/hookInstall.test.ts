@@ -101,6 +101,22 @@ describe('HookInstaller', () => {
     expect(written).not.toContain('secret');
   });
 
+  it('as a hook, records the time of a prompt the user sent, and of nothing else', async () => {
+    await new HookInstaller(dataDir, home).set(true);
+    const run = async (event: string, sessionId: string) => {
+      const child = execFileAsync(path.join(dataDir, 'agent-hub-hook'), ['codex', 'working']);
+      child.child.stdin?.end(JSON.stringify({ session_id: sessionId, hook_event_name: event, prompt: 'the secret prompt' }));
+      await child;
+    };
+    await run('UserPromptSubmit', 'prompted');
+    await run('PostToolUse', 'tool-only');
+    expect(await readdir(path.join(dataDir, 'last-prompt'))).toEqual(['codex-prompted.json']);
+    const written = await readFile(path.join(dataDir, 'last-prompt', 'codex-prompted.json'), 'utf8');
+    expect(Object.keys(JSON.parse(written))).toEqual(['id', 'at']);
+    expect(JSON.parse(written).id).toBe('codex:prompted');
+    expect(written).not.toContain('secret');
+  });
+
   it('as a hook, ignores a session id that is not a plain name and still exits 0', async () => {
     await new HookInstaller(dataDir, home).set(true);
     const child = execFileAsync(path.join(dataDir, 'agent-hub-hook'), ['claude', 'idle']);

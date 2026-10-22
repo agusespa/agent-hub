@@ -15,29 +15,34 @@ describe('isOnBoard', () => {
   const idle = { ...record, liveStatus: null };
   const nothingKept = { placement: undefined };
 
-  it('shows sessions active in the last 45 days', () => {
-    expect(isOnBoard({ ...idle, lastActiveAt: now - STALE_AFTER_MS }, nothingKept, now)).toBe(true);
+  it('shows sessions started in the last 45 days', () => {
+    expect(isOnBoard({ ...idle, createdAt: now - STALE_AFTER_MS }, nothingKept, now)).toBe(true);
   });
 
-  it('hides idle sessions unused for longer', () => {
-    expect(isOnBoard({ ...idle, lastActiveAt: now - STALE_AFTER_MS - 1 }, nothingKept, now)).toBe(false);
+  it('shows older sessions the user sent a prompt in the last 45 days', () => {
+    expect(isOnBoard({ ...idle, createdAt: 0 }, { placement: undefined, lastPromptAt: now - STALE_AFTER_MS }, now)).toBe(true);
+  });
+
+  it('hides idle sessions started or prompted longer ago, however recently last active', () => {
+    expect(isOnBoard({ ...idle, createdAt: now - STALE_AFTER_MS - 1, lastActiveAt: now }, nothingKept, now)).toBe(false);
+    expect(isOnBoard({ ...idle, createdAt: 0, lastActiveAt: now }, { placement: undefined, lastPromptAt: 1 }, now)).toBe(false);
   });
 
   it('shows old sessions that are running', () => {
-    expect(isOnBoard({ ...record, liveStatus: 'idle', lastActiveAt: 0 }, nothingKept, now)).toBe(true);
+    expect(isOnBoard({ ...record, liveStatus: 'idle', createdAt: 0 }, nothingKept, now)).toBe(true);
   });
 
   it('shows old sessions the user moved out of Parked or set a ticket on', () => {
-    expect(isOnBoard({ ...idle, lastActiveAt: 0 }, { placement: 'done' }, now)).toBe(true);
-    expect(isOnBoard({ ...idle, lastActiveAt: 0 }, { placement: undefined, ticket: 'PROJ-7' }, now)).toBe(true);
+    expect(isOnBoard({ ...idle, createdAt: 0 }, { placement: 'done' }, now)).toBe(true);
+    expect(isOnBoard({ ...idle, createdAt: 0 }, { placement: undefined, ticket: 'PROJ-7' }, now)).toBe(true);
   });
 
   it('hides old sessions the user moved to Parked', () => {
-    expect(isOnBoard({ ...idle, lastActiveAt: 0 }, { placement: 'parked' }, now)).toBe(false);
+    expect(isOnBoard({ ...idle, createdAt: 0 }, { placement: 'parked' }, now)).toBe(false);
   });
 
-  it('falls back to the creation time, and shows sessions with neither', () => {
-    expect(isOnBoard({ ...idle, createdAt: 0 }, nothingKept, now)).toBe(false);
+  it('falls back to last active with no start time, and shows sessions with neither', () => {
+    expect(isOnBoard({ ...idle, lastActiveAt: 0 }, nothingKept, now)).toBe(false);
     expect(isOnBoard(idle, nothingKept, now)).toBe(true);
   });
 });
@@ -83,14 +88,31 @@ describe('orderCards', () => {
     expect(ids(orderCards(cards, {}))).toEqual(['claude:new', 'claude:old']);
   });
 
-  it('keeps Parked most recently active first, ignoring a saved order', () => {
-    const cards = [card('claude:a', 'parked', 1), card('claude:b', 'parked', 3), card('claude:c', 'parked', 2)];
-    expect(ids(orderCards(cards, { parked: ['claude:a', 'claude:c', 'claude:b'] }))).toEqual(['claude:b', 'claude:c', 'claude:a']);
+  it.each(['parked', 'done'] as const)('keeps %s newest session first, ignoring a saved order', (column) => {
+    const cards = [card('claude:a', column, 1), card('claude:b', column, 3), card('claude:c', column, 2)];
+    expect(ids(orderCards(cards, { [column]: ['claude:a', 'claude:c', 'claude:b'] }))).toEqual(['claude:b', 'claude:c', 'claude:a']);
+  });
+
+  it('sorts Parked by the last prompt, then by when the session was created, never by last active', () => {
+    const cards = [
+      { ...card('claude:created-old', 'parked', 9), createdAt: 1 },
+      { ...card('claude:created-new', 'parked', 2), createdAt: 3 },
+      { ...card('claude:prompted', 'parked', 1), createdAt: 0, lastPromptAt: 5 },
+    ];
+    expect(ids(orderCards(cards, {}))).toEqual(['claude:prompted', 'claude:created-new', 'claude:created-old']);
+  });
+
+  it('keeps cards not ordered yet in Doing by when the session was created, whatever their last prompt', () => {
+    const cards = [
+      { ...card('claude:old', 'doing', 1), createdAt: 1, lastPromptAt: 9 },
+      { ...card('claude:new', 'doing', 1), createdAt: 2 },
+    ];
+    expect(ids(orderCards(cards, {}))).toEqual(['claude:new', 'claude:old']);
   });
 
   it('ignores an order saved for a column the card has left', () => {
-    const cards = [card('claude:a', 'done', 1), card('claude:b', 'done', 2)];
-    expect(ids(orderCards(cards, { doing: ['claude:a'], done: ['claude:b'] }))).toEqual(['claude:a', 'claude:b']);
+    const cards = [card('claude:a', 'standby', 1), card('claude:b', 'standby', 2)];
+    expect(ids(orderCards(cards, { doing: ['claude:a'], standby: ['claude:b'] }))).toEqual(['claude:a', 'claude:b']);
   });
 });
 

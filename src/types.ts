@@ -6,14 +6,14 @@ export type LiveStatus = 'working' | 'waiting' | 'idle';
 /**
  * Columns are the user's own planning; a card's status shows as a tag instead. The
  * one exception: a card whose session starts working moves to Doing. Parked is paused
- * work with no resume date, and holds every card the user has not moved yet; it follows
- * last active. The user orders the others by dragging.
+ * work with no resume date, and holds every card the user has not moved yet. Parked and
+ * Done go by the user's last prompt; the user orders Stand-by and Doing by dragging.
  */
 export const COLUMNS = [
   { id: 'parked', title: 'Parked', manualOrder: false },
   { id: 'standby', title: 'Stand-by', manualOrder: true },
   { id: 'doing', title: 'Doing', manualOrder: true },
-  { id: 'done', title: 'Done', manualOrder: true },
+  { id: 'done', title: 'Done', manualOrder: false },
 ] as const;
 
 export const DEFAULT_COLUMN: ColumnId = 'parked';
@@ -72,4 +72,6 @@ export interface Card extends SessionRecord {
   /** The ticket the user set on the board, such as PROJ-1234. */
   ticket: string | null;
   column: ColumnId;
+  /** When the user last sent the session a prompt, as the board's hooks saw it. */
+  lastPromptAt?: number;
 }
