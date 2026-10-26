@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readdir, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import { packager } from '@electron/packager';
@@ -19,6 +20,23 @@ const removeEmptyFolders = async (dir) => {
   if ((await readdir(dir)).length === 0) await rmdir(dir);
 };
 
+/**
+ * An Apple Development certificate in the keychain, by the name prefix codesign matches.
+ * macOS shows notifications only from a signed app, so without one the app keeps
+ * Electron's ad-hoc signature and its usage alerts do not show.
+ */
+const signingIdentity = () => {
+  try {
+    const identities = execFileSync('security', ['find-identity', '-v', '-p', 'codesigning'], { encoding: 'utf8' });
+    return identities.includes('"Apple Development:') ? 'Apple Development:' : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const identity = signingIdentity();
+if (!identity) console.warn('No Apple Development certificate in the keychain: the app is not signed, so macOS will not show its notifications.');
+
 // Paths are relative to the project and start with `/`; the project folder itself is ''.
 // Packager still drops devDependencies on its own, but keeps their folders, so those are swept after.
 // The icon goes in as prebuilt files rather than through packager's `icon` option, which would
@@ -31,5 +49,7 @@ const [appPath] = await packager({
   extendInfo: { CFBundleIconFile: 'icon.icns', CFBundleIconName: 'Icon' },
   ignore: (file) => file !== '' && (!KEEP.test(file) || DROP.test(file)),
   afterPrune: [({ buildPath }) => removeEmptyFolders(path.join(buildPath, 'node_modules'))],
+  // A failed signing stops the build, rather than leaving an app whose notifications never show.
+  osxSign: identity && { identity, continueOnError: false },
 });
 console.log(`Wrote ${appPath}`);

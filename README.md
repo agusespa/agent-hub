@@ -6,10 +6,11 @@ A local kanban board of Claude Code and Codex sessions.
 
 - `npm run app` opens the board in its own window.
 - `npm run package` builds `out/Agent Hub-darwin-arm64/Agent Hub.app`. Drag it to Applications.
+- The app sends a notification when a plan limit is nearly used up, or when weekly room is about to reset unused. macOS shows these only from a signed app: with an Apple Development certificate in your keychain (Xcode → Settings → Accounts → Manage Certificates), `npm run package` signs with it.
 
 ## Saved data
 
-`~/Library/Application Support/Agent Hub/` holds `placements.json` (card columns and order) and `tickets.json` (the ticket you set on each card with + Ticket), both plain JSON. There are no settings. Sessions you haven't sent a prompt in for 45 days (or started in that time, if Live status saw no prompt) drop off the board unless they are running or you moved the card out of Parked or set a ticket on it.
+`~/Library/Application Support/Agent Hub/` holds `placements.json` (card columns and order), `tickets.json` (the ticket you set on each card with + Ticket) and `usage-alerts.json` (the usage notifications already sent), all plain JSON. There are no settings. Sessions you haven't sent a prompt in for 45 days (or started in that time, if Live status saw no prompt) drop off the board unless they are running or you moved the card out of Parked or set a ticket on it.
 
 ## Data sources
 
