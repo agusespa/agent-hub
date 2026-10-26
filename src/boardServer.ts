@@ -16,6 +16,7 @@ import { CLAUDE_BIN, fetchClaudeSessions, fetchClaudeUsage } from './sources/cla
 import { CODEX_BIN, CodexAppServer } from './sources/codex.js';
 import { COLUMNS, isColumnId, type Card, type LiveStatus, type PlanUsage, type SessionRecord, type Source } from './types.js';
 import { UsageMeter } from './usage.js';
+import { UsageAlertLog, usageAlerts, type UsageAlert } from './usageAlerts.js';
 
 interface Board {
   columns: typeof COLUMNS;
@@ -37,6 +38,9 @@ const SOURCE_NAMES: Record<Source, string> = { claude: 'Claude', codex: 'Codex' 
 
 /** How often open pages ask for a new board. */
 const POLL_INTERVAL_MS = 5000;
+
+/** How often usage is checked for alerts, with or without a page open. */
+const USAGE_ALERT_INTERVAL_MS = 60_000;
 
 /** A command that is not on PATH or not where the app installs it; Codex wraps the spawn error as the cause. */
 export const isNotInstalled = (error: unknown): boolean =>
@@ -118,12 +122,14 @@ export interface BoardServer {
 /**
  * Serves the board page and its API on 127.0.0.1. Port 0 picks a free port, which is
  * what the desktop app uses. `liveReload` reloads open pages when `public/` changes.
+ * `onUsageAlert` gets each usage alert once; the desktop app shows them as notifications.
  * `claudeBin`, `codexBin` and `home` (where the tools' hook configs are) are only changed by tests.
  */
 export const startBoardServer = async ({
   dataDir,
   port,
   liveReload = false,
+  onUsageAlert,
   claudeBin = CLAUDE_BIN,
   codexBin = CODEX_BIN,
   home,
@@ -131,6 +137,7 @@ export const startBoardServer = async ({
   dataDir: string;
   port: number;
   liveReload?: boolean;
+  onUsageAlert?: (alert: UsageAlert) => void;
   claudeBin?: string;
   codexBin?: string;
   home?: string;
@@ -157,6 +164,23 @@ export const startBoardServer = async ({
   // missing from a board, as when a source fails to load, keep their last status.
   const lastStatuses = new Map<string, LiveStatus | null>();
   const missing = new Set<Source>();
+
+  // Usage is checked for alerts on its own timer, since pages only poll while the board is
+  // open. Each check reads the last answers; the reads it starts show in the next one.
+  const alertLog = new UsageAlertLog(path.join(dataDir, 'usage-alerts.json'));
+  const alertTimer = onUsageAlert
+    ? setInterval(() => {
+        alertLog
+          .take(usageAlerts(usage.get(missing)))
+          .then((alerts) => {
+            for (const alert of alerts) {
+              console.log(`Usage alert: ${alert.title}`);
+              onUsageAlert(alert);
+            }
+          })
+          .catch((error: Error) => console.warn(`Usage alerts: ${error.message}`));
+      }, USAGE_ALERT_INTERVAL_MS)
+    : undefined;
 
   const buildBoard = async (): Promise<Board> => {
     const errors: string[] = [];
@@ -328,6 +352,7 @@ export const startBoardServer = async ({
   return {
     url: `http://localhost:${boundPort}`,
     close: () => {
+      clearInterval(alertTimer);
       codex.stop();
       stopWatchingHooks();
       publicWatcher?.close();

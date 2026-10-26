@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, dialog, nativeTheme, Notification, shell } from 'electron';
 import { startBoardServer } from '../boardServer.js';
+import type { UsageAlert } from '../usageAlerts.js';
 import { DATA_DIR, PROJECT_ROOT } from '../app.js';
 
 /**
@@ -50,21 +51,40 @@ const openWindow = (boardUrl: string) => {
   void window.loadURL(boardUrl);
 };
 
+/** Brings the board to the front, opening a window if it was closed. */
+const showBoard = (boardUrl: string) => {
+  const [window] = BrowserWindow.getAllWindows();
+  if (window) {
+    if (window.isMinimized()) window.restore();
+    window.focus();
+  } else {
+    openWindow(boardUrl);
+  }
+};
+
+// Shown notifications, held until they close: one that is garbage collected loses its click handler.
+const notifications = new Set<Notification>();
+
+/** A macOS notification for a usage alert; clicking it shows the board. */
+const notifyUsage = (alert: UsageAlert, boardUrl: string) => {
+  if (!Notification.isSupported()) return;
+  const notification = new Notification({ title: alert.title, body: alert.body });
+  notifications.add(notification);
+  notification.on('click', () => {
+    notifications.delete(notification);
+    showBoard(boardUrl);
+  });
+  notification.on('close', () => notifications.delete(notification));
+  notification.show();
+};
+
 const start = async () => {
   // The packaged app takes its icon from the bundle; `npm run app` would otherwise show Electron's.
   if (!app.isPackaged) app.dock?.setIcon(path.join(PROJECT_ROOT, 'build', 'icon.png'));
-  const board = await startBoardServer({ dataDir: DATA_DIR, port: 0 });
+  const board = await startBoardServer({ dataDir: DATA_DIR, port: 0, onUsageAlert: (alert) => notifyUsage(alert, board.url) });
   openWindow(board.url);
 
-  app.on('second-instance', () => {
-    const [window] = BrowserWindow.getAllWindows();
-    if (window) {
-      if (window.isMinimized()) window.restore();
-      window.focus();
-    } else {
-      openWindow(board.url);
-    }
-  });
+  app.on('second-instance', () => showBoard(board.url));
   // macOS convention: closing the window keeps the app in the Dock; clicking it reopens the board.
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) openWindow(board.url);
