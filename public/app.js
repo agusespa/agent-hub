@@ -309,6 +309,38 @@ const headlineWindow = (windows) => {
   return nearlyUsed ?? fiveHour ?? mostUsed(windows);
 };
 
+const DAY_MS = 24 * 60 * 60_000;
+
+/** Why a source has no figures: its read failed, it has no plan limits, or it has not answered yet. */
+const noUsageReason = (source) => source.error ?? (source.fetchedAt ? 'No limits reported' : 'No usage data yet');
+
+/**
+ * One state for a source's limits, worst first: a limit used up, one running low (the
+ * meter's yellow or red), a weekly limit with room left that resets within a day (so
+ * it is worth spending), or all fine. Unknown, with the reason, when there are no figures.
+ */
+const usageState = ({ windows, ...source }) => {
+  if (!windows.length) return { state: 'unknown', text: noUsageReason(source) };
+  const out = windows.filter((window) => window.usedPercent >= 100);
+  if (out.length) return { state: 'out', text: `Used up: ${out.map((window) => window.label).join(', ')}` };
+  const low = windows.filter((window) => usageLevel(window.usedPercent) !== 'low');
+  if (low.length) return { state: 'low', text: `Running low: ${low.map((window) => `${window.label} ${Math.round(100 - window.usedPercent)}% left`).join(', ')}` };
+  const spare = windows.filter((window) => window.label.startsWith('Weekly') && window.resetsAt && window.resetsAt - Date.now() < DAY_MS);
+  if (spare.length) {
+    return { state: 'spare', text: `Use it before it resets: ${spare.map((window) => `${window.label} ${Math.round(100 - window.usedPercent)}% left, resets ${resetTime(window.resetsAt)}`).join(', ')}` };
+  }
+  return { state: 'ok', text: 'All limits fine' };
+};
+
+/** A dot like the one by the updated time, its glyph and colour set by the state's class. */
+const renderUsageIcon = ({ state, text }) => {
+  const icon = el('span', `usage-icon usage-${state}`);
+  icon.title = text;
+  icon.setAttribute('role', 'img');
+  icon.setAttribute('aria-label', text);
+  return icon;
+};
+
 /** Each source's headline limit, for the top bar; the full figures open below it. */
 const renderUsageCompact = (usage) => {
   if (!usage.length) return [el('span', 'usage-note', 'Usage')];
@@ -318,11 +350,14 @@ const renderUsageCompact = (usage) => {
     const shown = headlineWindow(source.windows);
     if (!shown) {
       part.title = `No usage data from ${SOURCE_LABELS[source.source]}`;
+      part.prepend(renderUsageIcon(usageState(source)));
       part.append(el('span', 'usage-left usage-placeholder', '–%'));
       return part;
     }
+    const state = usageState(source);
+    part.prepend(renderUsageIcon(state));
     const used = Math.min(100, Math.max(0, shown.usedPercent));
-    part.title = `${shown.label} limit: ${Math.round(100 - used)}% left`;
+    part.title = `${shown.label} limit: ${Math.round(100 - used)}% left\n${state.text}`;
     part.classList.add(`level-${usageLevel(used)}`);
     part.append(el('span', 'usage-left', `${Math.round(100 - used)}%`));
     return part;
@@ -345,12 +380,14 @@ const renderUsage = () => {
       const heading = el('div', 'usage-heading');
       heading.append(el('span', `badge badge-${source.source}`, SOURCE_LABELS[source.source]));
       if (source.plan) heading.append(el('span', 'plan', source.plan));
+      // With no figures the heading says only that; why is in its title, on hover.
+      const state = usageState(source);
+      const label = el('span', `usage-state usage-${state.state}`, state.state === 'unknown' ? 'No usage data' : state.text);
+      if (state.state === 'unknown') label.title = state.text;
+      heading.append(renderUsageIcon(state), label);
       row.append(heading);
       if (source.windows.length) row.append(...source.windows.map((window) => renderUsageWindow(window, source.fetchedAt)));
-      else {
-        row.append(...PLACEHOLDER_WINDOWS.map(renderPlaceholderWindow));
-        row.append(el('span', 'usage-note', source.error ?? (source.fetchedAt ? 'No limits reported' : 'No usage data yet')));
-      }
+      else row.append(...PLACEHOLDER_WINDOWS.map(renderPlaceholderWindow));
       // Claude is read every 30 minutes, and kept when its rate-limited endpoint says no.
       if (source.windows.length && Date.now() - source.fetchedAt > 10 * 60_000) {
         row.append(el('span', 'usage-note', `as of ${timeAgo(source.fetchedAt)}`));

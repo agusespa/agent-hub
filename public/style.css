@@ -287,6 +287,12 @@ body {
   max-width: none;
 }
 
+/* As tall as the filters: their 14px text's line, with this smaller text centred in it. */
+.usage summary,
+.hooks summary {
+  line-height: calc(14px * 1.4);
+}
+
 .usage-compact,
 .usage-compact-source {
   display: flex;
@@ -310,6 +316,76 @@ body {
 .usage-compact-source.level-mid .usage-left {
   color: var(--waiting);
   font-weight: 600;
+}
+
+/* A source's limits at a glance: fine, running low, used up, or weekly room to spend before it resets.
+   Drawn like the dot by the updated time, in the state's colour. */
+.usage-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  margin-bottom: 1px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.usage-icon::before {
+  color: var(--surface);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.usage-ok {
+  color: var(--working);
+}
+
+.usage-ok.usage-icon::before {
+  content: '✓';
+}
+
+.usage-low {
+  color: var(--waiting);
+}
+
+.usage-low.usage-icon::before {
+  content: '!';
+  font-size: 9px;
+}
+
+.usage-out {
+  color: var(--closed);
+}
+
+.usage-out.usage-icon::before {
+  content: '✕';
+  font-size: 7px;
+}
+
+.usage-spare {
+  color: var(--accent);
+}
+
+.usage-spare.usage-icon::before {
+  content: '↻';
+  font-size: 9px;
+}
+
+/* No figures to judge by: grey like the updated time's tick, the reason in its title. */
+.usage-unknown {
+  color: var(--muted);
+}
+
+.usage-unknown.usage-icon::before {
+  content: '?';
+  font-size: 9px;
+}
+
+.usage-state {
+  white-space: normal;
 }
 
 /* Opens under the usage summary, lined up with its right edge so it stays on screen. */

@@ -115,7 +115,7 @@ export const mapClaudeUsage = (
   const limits = usage.rate_limits;
   const base = { source: 'claude' as const, plan: usage.subscription_type, windows: [], fetchedAt };
   if (!usage.rate_limits_available) return { ...base, error: 'No plan limits for this login (API key or cloud provider)' };
-  if (!limits) return { ...base, error: 'Claude did not report plan usage (its usage endpoint may be rate limited); trying again within the hour' };
+  if (!limits) return { ...base, error: 'Claude did not report plan usage; trying again within the hour' };
   return {
     ...base,
     windows: [
