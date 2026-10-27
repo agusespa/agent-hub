@@ -598,7 +598,7 @@ body {
   scrollbar-color: var(--border) transparent;
 }
 
-/* No fill: columns are set apart only by a rule down the middle of the gap before them. */
+/* Columns are set apart by a rule down the middle of the gap before them. */
 .column {
   position: relative;
   display: flex;
@@ -619,9 +619,20 @@ body {
   background: var(--border);
 }
 
-/* Doing is where the live work is, so its title is bright and its count teal. */
+/* Extend the faint wash across half the gap to meet the dividers, keeping content in place. */
+.column[data-column='doing'] {
+  --doing-background: color-mix(in srgb, var(--accent) 3%, var(--bg));
+  background: var(--doing-background);
+  box-shadow: -6px 0 0 var(--doing-background), 6px 0 0 var(--doing-background);
+}
+
+.column[data-column='doing'].drop-target {
+  --doing-background: var(--drop);
+}
+
 .column[data-column='doing'] .column-title {
   color: var(--text);
+  font-weight: 600;
 }
 
 .column[data-column='doing'] .count {
@@ -1295,6 +1306,10 @@ textarea:focus-visible {
   /* Stacked, the columns sit one above another, so the rule between them goes. */
   .column + .column::before {
     display: none;
+  }
+
+  .column[data-column='doing'] {
+    box-shadow: none;
   }
 
   .cards {
