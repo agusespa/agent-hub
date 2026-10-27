@@ -8,5 +8,5 @@ export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.
 
 export const APP_VERSION: string = JSON.parse(readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8')).version;
 
-/** Saved card placements and tickets, shared by the browser and desktop versions. */
+/** Local app data and preferences, shared with the development preview. */
 export const DATA_DIR = path.join(homedir(), 'Library', 'Application Support', 'Agent Hub');

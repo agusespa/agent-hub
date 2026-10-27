@@ -41,6 +41,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 /* The page fills the window and holds still; each column's cards scroll on their own. */
 body {
   display: flex;
@@ -580,12 +584,20 @@ body {
   background: color-mix(in srgb, var(--closed) 15%, transparent);
 }
 
+.workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
 .board {
   display: grid;
   grid-template-columns: repeat(4, minmax(320px, 1fr));
   gap: 12px;
   flex: 1;
   min-height: 0;
+  min-width: 0;
   padding: 16px;
   overflow-x: auto;
 }
@@ -816,6 +828,27 @@ body {
   overflow-wrap: anywhere;
 }
 
+.card-title-button {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.card-title-button:hover {
+  color: var(--accent);
+}
+
+button:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 /* Each repo gets its own hue, from its name, so cards from one repo read as a set. */
 .repo {
   flex-shrink: 0;
@@ -924,10 +957,37 @@ body {
   color: var(--accent);
 }
 
-.open-session {
+.card-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
   margin-left: auto;
-  padding: 0 0 0 4px;
-  font-size: 16px;
+}
+
+.card-actions .icon-button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border-radius: 4px;
+}
+
+.card-actions .icon-button:hover {
+  background: var(--column);
+}
+
+.editor-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='1.5' y='2' width='13' height='12' rx='1.5'/%3E%3Cpath d='M1.5 5h13M6 7.5l-2 2 2 2M10 7.5l2 2-2 2'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.open-session {
+  font-size: 18px;
   line-height: 1;
 }
 
@@ -1005,6 +1065,142 @@ body {
   color: var(--accent);
   font: inherit;
   cursor: pointer;
+}
+
+.notes-indicator {
+  color: var(--accent);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.card-details {
+  flex-direction: column;
+  gap: 18px;
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  padding: 24px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.35);
+}
+
+.card-details[open] {
+  display: flex;
+}
+
+.card-details::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+
+.details-header,
+.details-badges,
+.details-actions,
+.notes-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.details-header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+#details-close {
+  flex-shrink: 0;
+  font-size: 24px;
+  line-height: 1;
+}
+
+#details-title {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.details-badges {
+  font-size: 12px;
+}
+
+.details-meta {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr);
+  gap: 10px 14px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.details-meta dt {
+  color: var(--muted);
+}
+
+.details-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.details-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.details-actions {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.details-action {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.details-action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.notes-heading label {
+  font-weight: 600;
+}
+
+#notes-status {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+#notes-status.save-error {
+  color: var(--closed);
+}
+
+#details-notes {
+  flex: 1;
+  width: 100%;
+  min-height: 150px;
+  padding: 12px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.6;
 }
 
 @media (max-width: 700px) {

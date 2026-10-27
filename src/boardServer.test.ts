@@ -8,6 +8,7 @@ import { CodexAppServer } from './sources/codex.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { SessionRecord } from './types.js';
+import * as sessionOpening from './openSession.js';
 
 let dataDir: string;
 let server: BoardServer | undefined;
@@ -122,5 +123,89 @@ describe('concurrent work alerts', () => {
     expect(notify).toHaveBeenCalledTimes(2);
     records[0].liveStatus = 'idle';
     expect((await read()).conflicts).toEqual([]);
+  });
+});
+
+describe('opening projects', () => {
+  it('opens only the folder of a known board card and reports missing folders', async () => {
+    const cwd = path.join(dataDir, 'project #1');
+    await mkdir(cwd);
+    vi.spyOn(claudeSource, 'fetchClaudeSessions').mockResolvedValue([
+      { id: 'claude:a', source: 'claude', title: 'Project', cwd, liveStatus: null },
+      { id: 'claude:b', source: 'claude', title: 'No folder', liveStatus: null },
+    ]);
+    vi.spyOn(CodexAppServer.prototype, 'listThreads').mockResolvedValue([]);
+    vi.spyOn(claudeSource, 'fetchClaudeUsage').mockResolvedValue({ source: 'claude', plan: null, windows: [], fetchedAt: 0 });
+    vi.spyOn(CodexAppServer.prototype, 'readUsage').mockResolvedValue({ source: 'codex', plan: null, windows: [], fetchedAt: 0 });
+    const open = vi.spyOn(sessionOpening, 'openInApp').mockResolvedValue();
+    server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home') });
+    const request = (body: object) => fetch(`${server!.url}/api/open`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    // A direct request also works before the page's first board poll.
+    expect((await request({ id: 'claude:a', target: 'vscode' })).status).toBe(200);
+    expect(open).toHaveBeenCalledExactlyOnceWith(sessionOpening.vscodeUrl(cwd));
+    expect((await request({ id: 'claude:unknown', target: 'vscode', cwd })).status).toBe(400);
+    expect((await request({ id: 'claude:b', target: 'vscode' })).status).toBe(400);
+    expect((await request({ id: 'claude:a', target: 'arbitrary-app' })).status).toBe(400);
+    await rm(cwd, { recursive: true });
+    expect((await request({ id: 'claude:a', target: 'vscode' })).status).toBe(400);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('notes API', () => {
+  it('persists notes through server restarts and retains annotated old cards', async () => {
+    vi.spyOn(claudeSource, 'fetchClaudeSessions').mockResolvedValue([
+      { id: 'claude:a', source: 'claude', title: 'Old session', createdAt: 0, liveStatus: null },
+    ]);
+    vi.spyOn(CodexAppServer.prototype, 'listThreads').mockResolvedValue([]);
+    vi.spyOn(claudeSource, 'fetchClaudeUsage').mockResolvedValue({ source: 'claude', plan: null, windows: [], fetchedAt: 0 });
+    vi.spyOn(CodexAppServer.prototype, 'readUsage').mockResolvedValue({ source: 'codex', plan: null, windows: [], fetchedAt: 0 });
+    const start = () => startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home') });
+    server = await start();
+    const save = (id: unknown, text: unknown) => fetch(`${server!.url}/api/notes`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, text }),
+    });
+    const read = async () => (await fetch(`${server!.url}/api/board`)).json();
+    expect((await read()).cards).toEqual([]);
+    const text = 'Review changes\nDo not forget the migration';
+    expect((await save('claude:a', text)).status).toBe(200);
+    expect((await read()).cards[0].notes).toBe(text);
+    expect(JSON.parse(await readFile(path.join(dataDir, 'notes.json'), 'utf8')).cards['claude:a']).toBe(text);
+    server.close();
+    server = await start();
+    expect((await read()).cards[0].notes).toBe(text);
+    expect((await save('claude:../../escape', text)).status).toBe(400);
+    expect((await save('claude:a', { text })).status).toBe(400);
+    expect((await save('claude:a', 'x'.repeat(20_001))).status).toBe(400);
+    expect((await save('claude:a', '')).status).toBe(200);
+    expect((await read()).cards).toEqual([]);
+  });
+});
+
+describe('view preferences API', () => {
+  it('reads local defaults and preserves filters and sorting across restarts', async () => {
+    const start = () => startBoardServer({
+      dataDir, port: 0, home: path.join(dataDir, 'home'),
+      claudeBin: path.join(dataDir, 'no-claude'), codexBin: path.join(dataDir, 'no-codex'),
+    });
+    server = await start();
+    const read = async () => (await (await fetch(`${server!.url}/api/board`)).json()).view;
+    const save = (patch: object) => fetch(`${server!.url}/api/view`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch),
+    });
+    expect(await read()).toEqual({ hiddenRepos: [], hiddenSources: [], hiddenTickets: [], oldestFirst: [] });
+    expect((await save({ hiddenRepos: ['project'], hiddenTickets: ['PROJ-1'] })).status).toBe(200);
+    expect((await save({ oldestFirst: ['parked'] })).status).toBe(200);
+    const saved = JSON.parse(await readFile(path.join(dataDir, 'view.json'), 'utf8'));
+    server.close();
+    server = await start();
+    expect(await read()).toEqual(saved);
+    expect(saved.hiddenRepos).toEqual(['project']);
+    expect(saved.oldestFirst).toEqual(['parked']);
+    expect((await save({ hiddenSources: 'claude' })).status).toBe(400);
+    expect((await save({ arbitrary: [] })).status).toBe(400);
+    expect(await read()).toEqual(saved);
   });
 });

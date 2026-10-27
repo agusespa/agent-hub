@@ -1,11 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, dialog, nativeTheme, session, shell } from 'electron';
 import { startBoardServer } from '../boardServer.js';
 import type { UsageAlert } from '../usageAlerts.js';
 import { DATA_DIR, PROJECT_ROOT } from '../app.js';
 import { createAlert, conflictAlert } from './notifications.js';
 import { testNotification } from './notificationTest.js';
+import { saveBeforeClose } from './saveBeforeClose.js';
+
+let quitting = false;
 
 /**
  * Apps opened from Finder get a bare PATH without ~/.local/bin or Homebrew, so
@@ -39,9 +42,13 @@ const openWindow = (boardUrl: string) => {
     title: 'Agent Hub',
     backgroundColor: backgroundColor(),
     show: false,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: {
+      contextIsolation: true, nodeIntegration: false, sandbox: true,
+      session: session.fromPartition('agent-hub-ui', { cache: false }),
+    },
   });
   window.once('ready-to-show', () => window.show());
+  saveBeforeClose(window, () => quitting ? app.quit() : window.close(), () => { quitting = false; });
   // Any link opens in the default browser; the window only ever shows the board.
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
@@ -85,7 +92,8 @@ const start = async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) openWindow(board.url);
   });
-  app.on('before-quit', () => board.close());
+  app.on('before-quit', () => { quitting = true; });
+  app.on('will-quit', () => board.close());
   nativeTheme.on('updated', () => {
     for (const window of BrowserWindow.getAllWindows()) window.setBackgroundColor(backgroundColor());
   });

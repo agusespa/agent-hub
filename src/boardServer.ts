@@ -11,8 +11,10 @@ import { HookInstaller, type HookState } from './hookInstall.js';
 import { HOOK_STATUS_DIR, HookStatusMerge, HookStatusStore, lastEventBySource } from './hookStatus.js';
 import { LAST_PROMPT_DIR, LastPromptStore } from './lastPrompt.js';
 import { isTicketId, TicketStore } from './ticket.js';
-import { openInApp, sessionUrl } from './openSession.js';
+import { openInApp, projectUrl, sessionUrl } from './openSession.js';
 import { PlacementStore } from './placements.js';
+import { isNotesText, NotesStore } from './notes.js';
+import { isViewPatch, ViewStore, type ViewSettings } from './view.js';
 import { CLAUDE_BIN, fetchClaudeSessions, fetchClaudeUsage } from './sources/claude.js';
 import { CODEX_BIN, CodexAppServer } from './sources/codex.js';
 import { COLUMNS, isColumnId, type Card, type LiveStatus, type PlanUsage, type SessionRecord, type Source } from './types.js';
@@ -23,6 +25,7 @@ interface Board {
   columns: typeof COLUMNS;
   cards: Card[];
   conflicts: SessionConflict[];
+  view: ViewSettings;
   usage: PlanUsage[];
   errors: string[];
   /** Sources whose command was not found, which the board leaves out without an error. */
@@ -148,6 +151,8 @@ export const startBoardServer = async ({
 }): Promise<BoardServer> => {
   const placements = new PlacementStore(path.join(dataDir, 'placements.json'));
   const tickets = new TicketStore(path.join(dataDir, 'tickets.json'));
+  const notes = new NotesStore(path.join(dataDir, 'notes.json'));
+  const view = new ViewStore(path.join(dataDir, 'view.json'));
   const lastPrompts = new LastPromptStore(path.join(dataDir, LAST_PROMPT_DIR), path.join(dataDir, 'last-prompts.json'));
   const codex = new CodexAppServer(codexBin);
   const hookStatuses = new HookStatusStore(path.join(dataDir, HOOK_STATUS_DIR));
@@ -189,19 +194,21 @@ export const startBoardServer = async ({
 
   const buildBoard = async (): Promise<Board> => {
     const errors: string[] = [];
-    const [claude, codexThreads, placed, keys, hooked, prompted] = await Promise.all([
+    const [claude, codexThreads, placed, keys, hooked, prompted, savedNotes, savedView] = await Promise.all([
       settle('claude', fetchClaudeSessions(claudeBin, claudeUsageCwd), errors, missing),
       settle('codex', codex.listThreads(), errors, missing),
       placements.read(),
       tickets.read(),
       hookStatuses.read(),
       lastPrompts.read(),
+      notes.read(),
+      view.read(),
     ]);
     if (missing.size === Object.keys(SOURCE_NAMES).length) {
       errors.push(`Neither Claude Code nor Codex was found: no \`${claudeBin}\` on PATH and no ${codexBin}. Install one.`);
     }
     const records = hookMerge.apply([...claude, ...codexThreads], hooked).filter((record) =>
-      isOnBoard(record, { placement: placed.columns.get(record.id), ticket: keys.get(record.id), lastPromptAt: prompted.get(record.id) }),
+      isOnBoard(record, { placement: placed.columns.get(record.id), ticket: keys.get(record.id), notes: savedNotes.get(record.id), lastPromptAt: prompted.get(record.id) }),
     );
     const cards = await Promise.all(
       records.map(async (record) =>
@@ -209,6 +216,7 @@ export const startBoardServer = async ({
           repo: record.repoHint ?? (await repoNameForCwd(record.cwd)),
           placement: placed.columns.get(record.id),
           ticket: keys.get(record.id),
+          notes: savedNotes.get(record.id),
           lastPromptAt: prompted.get(record.id),
         }),
       ),
@@ -235,6 +243,7 @@ export const startBoardServer = async ({
       columns: COLUMNS,
       cards: orderCards(cards, placed.order),
       conflicts,
+      view: savedView,
       usage: usage.get(missing),
       errors,
       missingSources: [...missing],
@@ -334,12 +343,29 @@ export const startBoardServer = async ({
         return sendJson(res, 200, { ok: true });
       }
 
+      if (req.method === 'PUT' && url.pathname === '/api/view') {
+        const patch = await readJson(req, 128 * 1024);
+        if (!isViewPatch(patch)) return sendJson(res, 400, { error: 'invalid view settings' });
+        await view.update(patch);
+        inFlight = undefined;
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (req.method === 'PUT' && url.pathname === '/api/notes') {
+        const { id, text } = await readJson(req, 128 * 1024);
+        if (!isCardId(id) || !isNotesText(text)) return sendJson(res, 400, { error: 'invalid notes' });
+        await notes.set(id, text);
+        inFlight = undefined;
+        return sendJson(res, 200, { ok: true });
+      }
+
       if (req.method === 'POST' && url.pathname === '/api/open') {
-        const { id } = await readJson(req);
+        const { id, target = 'session' } = await readJson(req);
+        if (target !== 'session' && target !== 'vscode') return sendJson(res, 400, { error: 'invalid open target' });
         // Only sessions on the board, so the page cannot make the board open arbitrary links.
         const card = isCardId(id) ? (lastBoard ?? (await getBoard())).cards.find((c) => c.id === id) : undefined;
-        const link = card && sessionUrl(card);
-        if (!link) return sendJson(res, 400, { error: 'This session cannot be opened from the board' });
+        const link = card && (target === 'vscode' ? await projectUrl(card) : sessionUrl(card));
+        if (!link) return sendJson(res, 400, { error: target === 'vscode' ? 'This session has no existing project folder' : 'This session cannot be opened from the board' });
         await openInApp(link);
         console.log(`Opened ${id}`);
         return sendJson(res, 200, { ok: true });

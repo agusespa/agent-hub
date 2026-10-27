@@ -34,9 +34,9 @@ This simulates two Working sessions, checks delivery to Notification Center, and
 
 ## Saved data
 
-`~/Library/Application Support/Agent Hub/` stores card placements, tickets, usage-alert history and hook metadata as JSON.
+All app data and preferences are saved as JSON in `~/Library/Application Support/Agent Hub/`: placements, tickets, notes (`notes.json`), filters and sorting (`view.json`), usage-alert history and hook metadata. The app uses no browser storage; Electron's renderer session is memory-only.
 
-Sessions leave the board 45 days after your last prompt (or session start if no prompt was recorded), unless running, moved out of Parked, or assigned a ticket.
+Sessions leave the board 45 days after your last prompt (or session start if no prompt was recorded), unless running, moved out of Parked, or given a ticket or notes.
 
 ## Data sources
 

@@ -71,6 +71,8 @@ export interface Card extends SessionRecord {
   repo: string;
   /** The ticket the user set on the board, such as PROJ-1234. */
   ticket: string | null;
+  /** Notes written in Agent Hub, stored locally per session. */
+  notes: string;
   column: ColumnId;
   /** When the user last sent the session a prompt, as the board's hooks saw it. */
   lastPromptAt?: number;

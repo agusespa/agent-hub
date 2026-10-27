@@ -12,6 +12,7 @@ interface CardContext {
   repo: string;
   placement: ColumnId | undefined;
   ticket?: string;
+  notes?: string;
   lastPromptAt?: number;
 }
 
@@ -21,25 +22,26 @@ export const STALE_AFTER_MS = 45 * 24 * 60 * 60 * 1000;
 /**
  * Sessions to show: those the user sent a prompt in the last 45 days, or started then if
  * the hooks saw no prompt, those running, and those kept by the user by moving the card
- * out of Parked or setting a ticket on it. Last active only counts with neither time, as
+ * out of Parked, setting a ticket or adding notes. Last active only counts with neither time, as
  * it moves when Claude or Codex rewrite a session. A session with no timestamps is shown,
  * as its age is unknown. A hidden session comes back once it gets a prompt or runs again.
  */
 export const isOnBoard = (
   record: SessionRecord,
-  { placement, ticket, lastPromptAt }: Pick<CardContext, 'placement' | 'ticket' | 'lastPromptAt'>,
+  { placement, ticket, notes, lastPromptAt }: Pick<CardContext, 'placement' | 'ticket' | 'notes' | 'lastPromptAt'>,
   now = Date.now(),
 ): boolean => {
   const lastUsed = lastPromptAt ?? record.createdAt ?? record.lastActiveAt;
-  const kept = (placement ?? DEFAULT_COLUMN) !== DEFAULT_COLUMN || ticket !== undefined;
+  const kept = (placement ?? DEFAULT_COLUMN) !== DEFAULT_COLUMN || ticket !== undefined || Boolean(notes?.trim());
   return record.liveStatus !== null || lastUsed === undefined || now - lastUsed <= STALE_AFTER_MS || kept;
 };
 
 /** Cards start in Parked until the user moves them or the session starts working (see `cardsStartedWorking`). */
-export const toCard = (record: SessionRecord, { repo, placement, ticket, lastPromptAt }: CardContext): Card => ({
+export const toCard = (record: SessionRecord, { repo, placement, ticket, notes, lastPromptAt }: CardContext): Card => ({
   ...record,
   repo,
   ticket: ticket ?? null,
+  notes: notes ?? '',
   column: placement ?? DEFAULT_COLUMN,
   lastPromptAt,
 });

@@ -35,6 +35,8 @@ describe('isOnBoard', () => {
   it('shows old sessions the user moved out of Parked or set a ticket on', () => {
     expect(isOnBoard({ ...idle, createdAt: 0 }, { placement: 'done' }, now)).toBe(true);
     expect(isOnBoard({ ...idle, createdAt: 0 }, { placement: undefined, ticket: 'PROJ-7' }, now)).toBe(true);
+    expect(isOnBoard({ ...idle, createdAt: 0 }, { placement: undefined, notes: 'Continue after release' }, now)).toBe(true);
+    expect(isOnBoard({ ...idle, createdAt: 0 }, { placement: undefined, notes: '   ' }, now)).toBe(false);
   });
 
   it('hides old sessions the user moved to Parked', () => {
@@ -62,6 +64,11 @@ describe('toCard', () => {
   it('carries the ticket the user set, and none from the branch', () => {
     expect(toCard(record, { repo: 'r', placement: undefined }).ticket).toBeNull();
     expect(toCard(record, { repo: 'r', placement: undefined, ticket: 'PROJ-7' }).ticket).toBe('PROJ-7');
+  });
+
+  it('carries local notes, defaulting to an empty string', () => {
+    expect(toCard(record, { repo: 'r', placement: undefined }).notes).toBe('');
+    expect(toCard(record, { repo: 'r', placement: undefined, notes: 'Review this' }).notes).toBe('Review this');
   });
 });
 

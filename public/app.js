@@ -1,6 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
 
-const SETTINGS_KEY = 'agent-hub:view';
 const STATUS_LABELS = { working: 'Working', waiting: 'Input needed', idle: 'Idle' };
 const SOURCE_LABELS = { claude: 'Claude', codex: 'Codex' };
 
@@ -15,6 +14,9 @@ let pollTimer;
 let actionError = null;
 /** Each repo's hue, from its place in the sorted repo list: far apart, and steady until a repo is added. */
 let repoHues = new Map();
+/** Notes are persisted by the local app; only edits awaiting autosave live in memory. */
+const noteDrafts = new Map();
+let selectedCard = null;
 
 /** The ticket filter's value for cards without one; ticket IDs are upper case, so it never clashes. */
 const NO_TICKET = 'none';
@@ -24,15 +26,35 @@ const NO_TICKET = 'none';
  * last-active columns flipped to oldest first.
  */
 const view = { hiddenRepos: [], hiddenSources: [], hiddenTickets: [], oldestFirst: [] };
-try {
-  const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
-  const strings = (values) => (Array.isArray(values) ? values.filter((v) => typeof v === 'string') : []);
-  for (const key of Object.keys(view)) view[key] = strings(saved[key]);
-} catch {}
-const saveView = () => {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(view));
-  } catch {}
+let viewLoaded = false;
+let pendingView = {};
+let savingView = null;
+
+const flushView = () => {
+  if (savingView) return savingView;
+  if (!Object.keys(pendingView).length) return Promise.resolve(true);
+  const patch = pendingView;
+  pendingView = {};
+  savingView = (async () => {
+    let saved = false;
+    try {
+      await send('PUT', '/api/view', patch);
+      saved = true;
+    } catch (error) {
+      pendingView = { ...patch, ...pendingView };
+      showError(`Saving filters failed: ${error.message}. Your choices remain open; changing a filter retries.`);
+    } finally {
+      savingView = null;
+      if (saved && Object.keys(pendingView).length) void flushView();
+    }
+    return saved;
+  })();
+  return savingView;
+};
+
+const saveView = (key) => {
+  pendingView[key] = [...view[key]];
+  void flushView();
 };
 
 const el = (tag, className, text) => {
@@ -189,6 +211,168 @@ const renderTicket = (card) => {
   return [el('span', 'tag ticket', card.ticket), button('icon-button ticket-change', '✎', 'Change or remove the ticket')];
 };
 
+const renderNotesStatus = () => {
+  if (!selectedCard) return;
+  const draft = noteDrafts.get(selectedCard.id);
+  const status = $('#notes-status');
+  status.textContent = draft?.error ? 'Couldn’t save' : draft?.saving ? 'Saving…' : draft ? 'Unsaved changes' : 'Saved';
+  status.classList.toggle('save-error', Boolean(draft?.error));
+  $('#notes-retry').hidden = !draft?.error;
+};
+
+/** Save requests for a given card run in order, even when typing continues during a save. */
+const saveNotes = (id) => {
+  const draft = noteDrafts.get(id);
+  if (!draft) return Promise.resolve(true);
+  if (draft.saving) return draft.saving;
+  clearTimeout(draft.timer);
+  const text = draft.text;
+  draft.error = null;
+  draft.saving = (async () => {
+    let saved = false;
+    try {
+      await send('PUT', '/api/notes', { id, text });
+      saved = true;
+      const card = board?.cards.find((candidate) => candidate.id === id);
+      if (card) card.notes = text;
+      if (selectedCard?.id === id) selectedCard.notes = text;
+      if (draft.text === text) {
+        clearTimeout(draft.timer);
+        noteDrafts.delete(id);
+      }
+    } catch (error) {
+      draft.error = error.message;
+      showError(`Saving notes failed: ${error.message}. Your edits are still open; retry to save them.`);
+    } finally {
+      draft.saving = null;
+      renderNotesStatus();
+      if (saved && noteDrafts.has(id)) void saveNotes(id);
+      render();
+    }
+    return saved;
+  })();
+  renderNotesStatus();
+  return draft.saving;
+};
+
+// Electron calls this before closing its window, while the local file-writing server is still running.
+window.agentHub = {
+  async flushPendingChanges() {
+    while (noteDrafts.size || savingView || Object.keys(pendingView).length) {
+      const saved = await Promise.all([...noteDrafts.keys()].map(saveNotes).concat(flushView()));
+      if (saved.some((result) => !result)) return false;
+    }
+    return true;
+  },
+};
+
+const renderDetails = () => {
+  if (!selectedCard) return;
+  const current = board?.cards.find((card) => card.id === selectedCard.id);
+  if (current) selectedCard = { ...current };
+  const card = selectedCard;
+  $('#details-title').textContent = card.title;
+  const badges = [el('span', `badge badge-${card.source}`, SOURCE_LABELS[card.source])];
+  if (card.liveStatus) badges.push(el('span', `status status-${card.liveStatus}`, STATUS_LABELS[card.liveStatus]));
+  $('#details-badges').replaceChildren(...badges);
+  const metadata = [
+    ['Project', card.repo],
+    ['Folder', card.cwd ?? 'No folder'],
+    ['Branch', card.branch ?? 'Not reported'],
+    ['Ticket', card.ticket ?? 'No ticket'],
+    ['Column', board?.columns.find((column) => column.id === card.column)?.title ?? card.column],
+  ];
+  $('#details-meta').replaceChildren(...metadata.flatMap(([label, value]) => [el('dt', '', label), el('dd', '', value)]));
+  const sessionButton = $('#details-session');
+  sessionButton.hidden = !card.openId;
+  sessionButton.textContent = `Open in ${SOURCE_LABELS[card.source]} ↗`;
+  $('#details-editor').hidden = !card.cwd;
+  // The textarea stays mounted; polling must not replace its value or move the caret while editing.
+  const textarea = $('#details-notes');
+  if (!noteDrafts.has(card.id) && document.activeElement !== textarea) textarea.value = card.notes ?? '';
+  renderNotesStatus();
+};
+
+const openDetails = (card) => {
+  if (selectedCard && selectedCard.id !== card.id) void saveNotes(selectedCard.id);
+  selectedCard = { ...card };
+  $('#details-notes').value = noteDrafts.get(card.id)?.text ?? card.notes ?? '';
+  renderDetails();
+  if (!$('#card-details').open) $('#card-details').showModal();
+  $('#details-close').focus();
+};
+
+const closeDetails = () => {
+  if (!selectedCard) return;
+  const id = selectedCard.id;
+  void saveNotes(id);
+  selectedCard = null;
+  $('#card-details').close();
+  [...document.querySelectorAll('.card')].find((card) => card.dataset.id === id)?.querySelector('.card-title-button')?.focus();
+};
+
+$('#details-close').addEventListener('click', closeDetails);
+$('#details-session').addEventListener('click', () => selectedCard && openSession(selectedCard.id));
+$('#details-editor').addEventListener('click', () => selectedCard && openSession(selectedCard.id, 'vscode'));
+$('#notes-retry').addEventListener('click', () => selectedCard && saveNotes(selectedCard.id));
+$('#details-notes').addEventListener('input', (event) => {
+  if (!selectedCard) return;
+  const id = selectedCard.id;
+  const draft = noteDrafts.get(id) ?? { text: '', saving: false, error: null };
+  clearTimeout(draft.timer);
+  draft.text = event.target.value;
+  draft.error = null;
+  noteDrafts.set(id, draft);
+  draft.timer = setTimeout(() => saveNotes(id), 400);
+  renderNotesStatus();
+});
+$('#details-notes').addEventListener('blur', () => selectedCard && saveNotes(selectedCard.id));
+$('#card-details').addEventListener('cancel', (event) => {
+  event.preventDefault();
+  closeDetails();
+});
+$('#card-details').addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab') return;
+  const controls = [...$('#card-details').querySelectorAll('button:not(:disabled), textarea:not(:disabled)')]
+    .filter((control) => control.getClientRects().length);
+  const first = controls[0];
+  const last = controls.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last?.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first?.focus();
+  }
+});
+const outsideDetails = (event) => {
+  const box = $('#card-details').getBoundingClientRect();
+  return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
+};
+let backdropPointerDown = false;
+$('#card-details').addEventListener('pointerdown', (event) => {
+  backdropPointerDown = event.target === $('#card-details') && outsideDetails(event);
+});
+$('#card-details').addEventListener('click', (event) => {
+  if (backdropPointerDown && event.target === $('#card-details') && outsideDetails(event)) closeDetails();
+  backdropPointerDown = false;
+});
+// Give pending edits a final local save when the preview reloads or the Electron window closes.
+window.addEventListener('pagehide', () => {
+  for (const [id, draft] of noteDrafts) {
+    void fetch('/api/notes', {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, text: draft.text }), keepalive: true,
+    }).catch(() => {});
+  }
+  if (Object.keys(pendingView).length) {
+    void fetch('/api/view', {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(pendingView), keepalive: true,
+    }).catch(() => {});
+  }
+});
+
 const renderCard = (card) => {
   const isEditing = editing?.id === card.id;
   const node = el('article', `card source-${card.source}${isEditing ? ' editing' : ''}`);
@@ -219,15 +403,33 @@ const renderCard = (card) => {
     branch.title = card.branch;
     top.append(branch);
   }
+  const actions = el('div', 'card-actions');
+  if (card.cwd) {
+    const open = el('button', 'icon-button open-project');
+    Object.assign(open, { type: 'button', title: `Open project in VS Code\n${card.cwd}` });
+    open.setAttribute('aria-label', 'Open project in VS Code');
+    const icon = el('span', 'editor-icon');
+    icon.setAttribute('aria-hidden', 'true');
+    open.append(icon);
+    open.addEventListener('click', () => openSession(card.id, 'vscode'));
+    actions.append(open);
+  }
   if (card.openId) {
     const open = el('button', 'icon-button open-session', '↗');
     Object.assign(open, { type: 'button', title: `Open in ${SOURCE_LABELS[card.source]}` });
+    open.setAttribute('aria-label', `Open in ${SOURCE_LABELS[card.source]}`);
     open.addEventListener('click', () => openSession(card.id));
-    top.append(open);
+    actions.append(open);
   }
+  if (actions.children.length) top.append(actions);
   const ticket = el('div', 'card-ticket');
   ticket.append(...renderTicket(card));
-  node.append(top, el('h3', 'title', card.title), ticket);
+  const title = el('h3', 'title');
+  const titleButton = el('button', 'card-title-button', card.title);
+  titleButton.type = 'button';
+  titleButton.addEventListener('click', () => openDetails(card));
+  title.append(titleButton);
+  node.append(top, title, ticket);
 
   const conflicts = (board.conflicts ?? []).filter((conflict) => conflict.sessionIds.includes(card.id));
   if (conflicts.length) {
@@ -255,6 +457,13 @@ const renderCard = (card) => {
   tags.append(el('span', `badge badge-${card.source}`, SOURCE_LABELS[card.source]));
   if (card.liveStatus) {
     tags.append(el('span', `status status-${card.liveStatus}`, STATUS_LABELS[card.liveStatus]));
+  }
+  if ((noteDrafts.get(card.id)?.text ?? card.notes ?? '').trim()) {
+    const notes = el('span', 'notes-indicator', '▤');
+    notes.title = 'Has notes';
+    notes.setAttribute('role', 'img');
+    notes.setAttribute('aria-label', 'Has notes');
+    tags.append(notes);
   }
   const { at, label } = cardTime(card);
   const time = el('span', 'time', timeAgo(at));
@@ -497,7 +706,7 @@ const renderColumn = (column, cards) => {
     toggle.setAttribute('aria-label', toggle.dataset.tip);
     toggle.addEventListener('click', () => {
       view.oldestFirst = oldestFirst ? view.oldestFirst.filter((id) => id !== column.id) : [...view.oldestFirst, column.id];
-      saveView();
+      saveView('oldestFirst');
       render();
     });
     header.append(toggle);
@@ -576,6 +785,10 @@ document.addEventListener('drop', (event) => {
  * sort tooltip doesn't close and reopen on every poll.
  */
 const updateColumns = (sections) => {
+  const focused = document.activeElement;
+  const focusedId = focused?.closest('.card')?.dataset.id;
+  const focusSelector = ['.card-title-button', '.open-session', '.open-project']
+    .find((selector) => focused?.matches(selector));
   const current = [...$('#board').children];
   if (current.length !== sections.length || sections.some((section, i) => section.dataset.column !== current[i].dataset.column)) {
     $('#board').replaceChildren(...sections);
@@ -590,6 +803,10 @@ const updateColumns = (sections) => {
     oldList.replaceWith(list);
     list.scrollTop = scrollTop;
   });
+  if (focusedId && focusSelector) {
+    [...document.querySelectorAll('.card')].find((card) => card.dataset.id === focusedId)
+      ?.querySelector(focusSelector)?.focus({ preventScroll: true });
+  }
 };
 
 /** Holds still while a card is dragged or edited; `force` redraws an open editor. */
@@ -613,6 +830,7 @@ const render = ({ force = false } = {}) => {
   // A two-digit hour keeps the text one width, so the toolbar doesn't shift as the time changes.
   $('#updated').textContent = `Updated ${new Date(board.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   renderErrors();
+  renderDetails();
 };
 
 const renderErrors = () => {
@@ -646,6 +864,10 @@ const poll = async () => {
     const response = await fetch('/api/board');
     if (!response.ok) throw new Error(`Board request failed (${response.status})`);
     board = await response.json();
+    if (!viewLoaded) {
+      for (const key of Object.keys(view)) view[key] = board.view?.[key] ?? [];
+      viewLoaded = true;
+    }
     $('#updated').classList.remove('stale');
     $('#updated').title = `Up to date. Refreshes every ${Math.round(board.pollIntervalMs / 1000)}s.`;
     render();
@@ -709,9 +931,9 @@ const place = async (id, column, before) => {
   poll();
 };
 
-const openSession = async (id) => {
+const openSession = async (id, target = 'session') => {
   try {
-    await send('POST', '/api/open', { id });
+    await send('POST', '/api/open', { id, target });
   } catch (error) {
     showError(`Opening failed: ${error.message}`);
   }
@@ -734,7 +956,7 @@ for (const [selector, key] of [['#filter-repo', 'hiddenRepos'], ['#filter-source
   const picker = $(selector);
   const hide = (values) => {
     view[key] = values;
-    saveView();
+    saveView(key);
     render();
   };
   const values = (boxes) => [...boxes].map((box) => box.value);
