@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readdir, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import { packager } from '@electron/packager';
+import electronChecksums from 'electron/checksums.json' with { type: 'json' };
 
 /** The app runs only from these; everything else in the project stays out of the bundle. */
 const KEEP = /^\/(package\.json$|dist(\/|$)|public(\/|$)|hooks(\/|$)|node_modules(\/|$))/;
@@ -45,11 +46,20 @@ const [appPath] = await packager({
   dir: '.',
   out: 'out',
   overwrite: true,
+  // Verify cached Electron locally instead of fetching GitHub checksums on every run.
+  download: { checksums: electronChecksums },
   extraResource: ['build/icon.icns', 'build/Assets.car'],
   extendInfo: { CFBundleIconFile: 'icon.icns', CFBundleIconName: 'Icon' },
   ignore: (file) => file !== '' && (!KEEP.test(file) || DROP.test(file)),
   afterPrune: [({ buildPath }) => removeEmptyFolders(path.join(buildPath, 'node_modules'))],
   // A failed signing stops the build, rather than leaving an app whose notifications never show.
-  osxSign: identity && { identity, continueOnError: false },
+  osxSign: identity && {
+    identity,
+    continueOnError: false,
+    // This is a local development build; avoid an Apple timestamp request per file.
+    optionsForFile: () => ({ timestamp: 'none' }),
+    // Electron has hundreds of binary resources; sign matching files in one call.
+    batchCodesignCalls: true,
+  },
 });
 console.log(`Wrote ${appPath}`);
