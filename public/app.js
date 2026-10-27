@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 
-const STATUS_LABELS = { working: 'Working', waiting: 'Input needed', idle: 'Idle' };
+const STATUS_LABELS = { working: 'Working', waiting: 'Awaiting input', idle: 'Idle' };
 const SOURCE_LABELS = { claude: 'Claude', codex: 'Codex' };
 
 let board = null;
