@@ -406,15 +406,14 @@ body {
   min-width: 48px;
 }
 
-/* An empty, dashed meter where a source reported no figures. */
+/* An empty, faded meter where a source reported no figures. Faded so it does not read as 0% used;
+   a border here would be cut up by the meter's segment mask. */
 .usage-placeholder {
   color: var(--muted);
 }
 
 .usage-placeholder .meter {
-  background: none;
-  border: 1px dashed var(--muted);
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .hooks {
