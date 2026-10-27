@@ -12,6 +12,8 @@ let editing = null;
 let pollTimer;
 /** The last save or open that failed: it stays on the banner until closed, since polls only redraw the board's errors. */
 let actionError = null;
+/** Why the last board load failed, until one succeeds; the next poll retries on its own. */
+let loadError = null;
 /** Each repo's hue, from its place in the sorted repo list: far apart, and steady until a repo is added. */
 let repoHues = new Map();
 /** Notes are persisted by the local app; only edits awaiting autosave live in memory. */
@@ -563,7 +565,7 @@ const usageState = ({ windows, ...source }) => {
   return { state: 'ok', text: 'All limits fine' };
 };
 
-/** A dot like the one by the updated time, its glyph and colour set by the state's class. */
+/** A dot, its glyph and colour set by the state's class. */
 const renderUsageIcon = ({ state, text }) => {
   const icon = el('span', `usage-icon usage-${state}`);
   icon.title = text;
@@ -827,14 +829,13 @@ const render = ({ force = false } = {}) => {
     return view.oldestFirst.includes(column.id) ? cards.reverse() : cards;
   };
   updateColumns(board.columns.map((column) => renderColumn(column, cardsIn(column))));
-  // A two-digit hour keeps the text one width, so the toolbar doesn't shift as the time changes.
-  $('#updated').textContent = `Updated ${new Date(board.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   renderErrors();
   renderDetails();
 };
 
 const renderErrors = () => {
   const lines = (board?.errors ?? []).map((message) => el('p', '', message));
+  if (loadError) lines.unshift(el('p', '', loadError));
   if (actionError) {
     const line = el('p', '', actionError);
     const close = el('button', 'link-button errors-close', '×');
@@ -868,16 +869,13 @@ const poll = async () => {
       for (const key of Object.keys(view)) view[key] = board.view?.[key] ?? [];
       viewLoaded = true;
     }
-    $('#updated').classList.remove('stale');
-    $('#updated').title = `Up to date. Refreshes every ${Math.round(board.pollIntervalMs / 1000)}s.`;
+    loadError = null;
     render();
     watchForChanges();
   } catch (error) {
-    // The next poll retries, so this flags the time as stale rather than raising the banner.
-    const updated = $('#updated');
-    if (!board) updated.textContent = 'Not loaded';
-    updated.classList.add('stale');
-    updated.title = `Could not load sessions: ${error.message}. Retrying every ${Math.round((board?.pollIntervalMs ?? 5000) / 1000)}s.`;
+    const since = board ? ` Not updated since ${new Date(board.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : '';
+    loadError = `Could not load sessions: ${error.message}.${since} Retrying every ${Math.round((board?.pollIntervalMs ?? 5000) / 1000)}s.`;
+    renderErrors();
   }
   pollTimer = setTimeout(poll, board?.pollIntervalMs ?? 5000);
 };
