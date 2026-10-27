@@ -229,6 +229,28 @@ const renderCard = (card) => {
   ticket.append(...renderTicket(card));
   node.append(top, el('h3', 'title', card.title), ticket);
 
+  const conflicts = (board.conflicts ?? []).filter((conflict) => conflict.sessionIds.includes(card.id));
+  if (conflicts.length) {
+    const warning = el('details', 'conflict-warning');
+    warning.append(el('summary', '', '⚠ Concurrent work'));
+    for (const conflict of conflicts) {
+      const other = board.cards.find((candidate) => candidate.id === conflict.sessionIds.find((id) => id !== card.id));
+      const description = el('p', '', `${conflict.kind === 'worktree' ? 'Same worktree' : `Same branch (${conflict.branch})`}: ${other ? `${SOURCE_LABELS[other.source]} · ${other.title}` : 'another working session'}`);
+      description.append(el('span', 'conflict-location', conflict.location));
+      if (other?.openId) {
+        const open = el('button', 'link-button', `Open in ${SOURCE_LABELS[other.source]} ↗`);
+        open.type = 'button';
+        open.addEventListener('click', () => openSession(other.id));
+        description.append(open);
+      }
+      warning.append(description);
+    }
+    // Preserve an expanded warning through the board's regular redraws.
+    warning.open = [...document.querySelectorAll('.card')].find((old) => old.dataset.id === card.id)
+      ?.querySelector('.conflict-warning')?.open ?? false;
+    node.append(warning);
+  }
+
   const tags = el('div', 'tags');
   tags.append(el('span', `badge badge-${card.source}`, SOURCE_LABELS[card.source]));
   if (card.liveStatus) {

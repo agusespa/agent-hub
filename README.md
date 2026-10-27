@@ -6,16 +6,38 @@ A local kanban board of Claude Code and Codex sessions.
 
 - `npm run app` opens the board in its own window.
 - `npm run package` builds `out/Agent Hub-darwin-arm64/Agent Hub.app`. Drag it to Applications.
-- The app sends a notification when a plan limit is nearly used up, or when weekly room is about to reset unused. macOS shows these only from a signed app: with an Apple Development certificate in your keychain (Xcode → Settings → Accounts → Manage Certificates), `npm run package` signs with it.
-
-## Saved data
-
-`~/Library/Application Support/Agent Hub/` holds `placements.json` (card columns and order), `tickets.json` (the ticket you set on each card with + Ticket) and `usage-alerts.json` (the usage notifications already sent), all plain JSON. There are no settings. Sessions you haven't sent a prompt in for 45 days (or started in that time, if Live status saw no prompt) drop off the board unless they are running or you moved the card out of Parked or set a ticket on it.
-
-## Data sources
-
-The board only reads, and only through documented interfaces: the `claude` CLI and Agent SDK, and `codex app-server`. Prompt and transcript text is never shown or stored.
 
 ## Live status
 
-Off by default. **Live status → Turn on** adds the board's hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`, the only files the board writes outside its own folder; **Turn off** removes just those. With them on, status changes show at once, Codex cards get a status too, and Parked and Done sort by when you last sent each session a prompt (otherwise by when it started). The hooks keep only the session id, the event's status and the time of your last prompt, in `live-status/` and `last-prompt/` under the saved data folder; the board copies those times to `last-prompts.json`. Codex runs a new hook only after you trust it with `/hooks` in the Codex CLI.
+Off by default. **Live status → Turn on** enables immediate updates and Codex status, and sorts Parked and Done by your last prompt instead of session start time.
+
+It adds hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`; **Turn off** removes only those hooks. Trust new Codex hooks with `/hooks` in the Codex CLI. Hooks save only session IDs, status and last-prompt times.
+
+## Notifications
+
+The desktop app alerts you when:
+
+- A plan limit is nearly used up, or unused weekly capacity is about to reset.
+- Two **Working** sessions share a Git worktree or a named branch within the same local repository. Both cards also show a **Concurrent work** warning. Alerts fire once per overlap, even with the window closed. Codex detection requires Live status.
+
+Concurrent work warnings flag shared workspaces, not confirmed edits to the same files.
+
+macOS notifications require permission and a signed app. `npm run package` signs with an Apple Development certificate if one is available in your keychain. Create one through Xcode → Settings → Accounts → Manage Certificates.
+
+Test the signed build:
+
+```sh
+"out/Agent Hub-darwin-arm64/Agent Hub.app/Contents/MacOS/Agent Hub" --test-notification
+```
+
+This simulates two Working sessions, checks delivery to Notification Center, and stays open for 30 seconds. If no banner appears, check the notification style and Focus settings.
+
+## Saved data
+
+`~/Library/Application Support/Agent Hub/` stores card placements, tickets, usage-alert history and hook metadata as JSON.
+
+Sessions leave the board 45 days after your last prompt (or session start if no prompt was recorded), unless running, moved out of Parked, or assigned a ticket.
+
+## Data sources
+
+Sessions come from the `claude` CLI and Agent SDK, and `codex app-server`. Git identifies shared worktrees and branches. Prompt and transcript text is never shown or stored.

@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { cardsStartedWorking, isOnBoard, orderCards, toCard } from './board.js';
 import { PROJECT_ROOT } from './app.js';
+import { ConflictAlerts, sessionConflicts, type SessionConflict } from './conflicts.js';
 import { repoNameForCwd } from './git.js';
 import { HookInstaller, type HookState } from './hookInstall.js';
 import { HOOK_STATUS_DIR, HookStatusMerge, HookStatusStore, lastEventBySource } from './hookStatus.js';
@@ -21,6 +22,7 @@ import { UsageAlertLog, usageAlerts, type UsageAlert } from './usageAlerts.js';
 interface Board {
   columns: typeof COLUMNS;
   cards: Card[];
+  conflicts: SessionConflict[];
   usage: PlanUsage[];
   errors: string[];
   /** Sources whose command was not found, which the board leaves out without an error. */
@@ -130,6 +132,7 @@ export const startBoardServer = async ({
   port,
   liveReload = false,
   onUsageAlert,
+  onConflictAlert,
   claudeBin = CLAUDE_BIN,
   codexBin = CODEX_BIN,
   home,
@@ -138,6 +141,7 @@ export const startBoardServer = async ({
   port: number;
   liveReload?: boolean;
   onUsageAlert?: (alert: UsageAlert) => void;
+  onConflictAlert?: (conflict: SessionConflict, cards: Card[]) => void;
   claudeBin?: string;
   codexBin?: string;
   home?: string;
@@ -164,6 +168,7 @@ export const startBoardServer = async ({
   // missing from a board, as when a source fails to load, keep their last status.
   const lastStatuses = new Map<string, LiveStatus | null>();
   const missing = new Set<Source>();
+  const conflictAlerts = new ConflictAlerts();
 
   // Usage is checked for alerts on its own timer, since pages only poll while the board is
   // open. Each check reads the last answers; the reads it starts show in the next one.
@@ -221,9 +226,15 @@ export const startBoardServer = async ({
         console.log(`Moved ${card.id} to doing: it started working`);
       }
     }
+    const conflicts = await sessionConflicts(cards);
+    const unavailable = [...missing, ...Object.entries(SOURCE_NAMES)
+      .filter(([, name]) => errors.some((error) => error.startsWith(`${name}:`)))
+      .map(([source]) => source)];
+    for (const conflict of conflictAlerts.take(conflicts, unavailable)) onConflictAlert?.(conflict, cards);
     return {
       columns: COLUMNS,
       cards: orderCards(cards, placed.order),
+      conflicts,
       usage: usage.get(missing),
       errors,
       missingSources: [...missing],
@@ -248,6 +259,11 @@ export const startBoardServer = async ({
       });
     return inFlight;
   };
+
+  // Desktop alerts keep working when the board window is closed or in the background.
+  const conflictTimer = onConflictAlert ? setInterval(() => {
+    void getBoard().catch((error: Error) => console.warn(`Session conflicts: ${error.message}`));
+  }, POLL_INTERVAL_MS) : undefined;
 
   // Pages listening for changes: `board` when a hook reports a session's status, so they
   // load the board at once, and with `liveReload`, `reload` when public/ changes. A server
@@ -353,6 +369,7 @@ export const startBoardServer = async ({
     url: `http://localhost:${boundPort}`,
     close: () => {
       clearInterval(alertTimer);
+      clearInterval(conflictTimer);
       codex.stop();
       stopWatchingHooks();
       publicWatcher?.close();

@@ -1,9 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, nativeTheme, Notification, shell } from 'electron';
+import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron';
 import { startBoardServer } from '../boardServer.js';
 import type { UsageAlert } from '../usageAlerts.js';
 import { DATA_DIR, PROJECT_ROOT } from '../app.js';
+import { createAlert, conflictAlert } from './notifications.js';
+import { testNotification } from './notificationTest.js';
 
 /**
  * Apps opened from Finder get a bare PATH without ~/.local/bin or Homebrew, so
@@ -62,26 +64,20 @@ const showBoard = (boardUrl: string) => {
   }
 };
 
-// Shown notifications, held until they close: one that is garbage collected loses its click handler.
-const notifications = new Set<Notification>();
-
-/** A macOS notification for a usage alert; clicking it shows the board. */
-const notifyUsage = (alert: UsageAlert, boardUrl: string) => {
-  if (!Notification.isSupported()) return;
-  const notification = new Notification({ title: alert.title, body: alert.body });
-  notifications.add(notification);
-  notification.on('click', () => {
-    notifications.delete(notification);
-    showBoard(boardUrl);
-  });
-  notification.on('close', () => notifications.delete(notification));
-  notification.show();
+/** Clicking a desktop alert brings the board to the front. */
+const notifyAlert = (alert: Pick<UsageAlert, 'title' | 'body'>, boardUrl: string) => {
+  createAlert(alert, () => showBoard(boardUrl))?.show();
 };
 
 const start = async () => {
   // The packaged app takes its icon from the bundle; `npm run app` would otherwise show Electron's.
   if (!app.isPackaged) app.dock?.setIcon(path.join(PROJECT_ROOT, 'build', 'icon.png'));
-  const board = await startBoardServer({ dataDir: DATA_DIR, port: 0, onUsageAlert: (alert) => notifyUsage(alert, board.url) });
+  const board = await startBoardServer({
+    dataDir: DATA_DIR,
+    port: 0,
+    onUsageAlert: (alert) => notifyAlert(alert, board.url),
+    onConflictAlert: (conflict, cards) => notifyAlert(conflictAlert(conflict, cards), board.url),
+  });
   openWindow(board.url);
 
   app.on('second-instance', () => showBoard(board.url));
@@ -99,7 +95,12 @@ const start = async () => {
 app.setPath('userData', path.join(DATA_DIR, 'Electron'));
 
 // No top-level await: Electron does not fire `ready` until the ESM entry module has finished evaluating.
-if (!app.requestSingleInstanceLock()) {
+if (process.argv.includes('--test-notification')) {
+  app.whenReady().then(testNotification).then(() => app.exit(0)).catch((error: Error) => {
+    console.error(`Notification test failed: ${error.message}`);
+    app.exit(1);
+  });
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   useLoginShellPath();

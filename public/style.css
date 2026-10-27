@@ -728,6 +728,34 @@ body {
   opacity: 0.5;
 }
 
+.conflict-warning {
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--waiting) 55%, var(--border));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--waiting) 8%, var(--surface));
+  font-size: 12px;
+}
+
+.conflict-warning summary {
+  color: var(--waiting);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.conflict-warning p {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.conflict-location {
+  display: block;
+  margin: 4px 0;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  white-space: pre-line;
+}
+
 .card-top {
   display: flex;
   align-items: center;
