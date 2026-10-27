@@ -41,9 +41,14 @@ const openWindow = (boardUrl: string) => {
     minWidth: 420,
     title: 'Agent Hub',
     backgroundColor: backgroundColor(),
+    ...(process.platform === 'darwin' ? {
+      titleBarStyle: 'hidden',
+      trafficLightPosition: { x: 16, y: 20 },
+    } as const : {}),
     show: false,
     webPreferences: {
       contextIsolation: true, nodeIntegration: false, sandbox: true,
+      preload: path.join(import.meta.dirname, 'preload.cjs'),
       session: session.fromPartition('agent-hub-ui', { cache: false }),
     },
   });

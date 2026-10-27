@@ -76,6 +76,20 @@ body {
   padding: 12px 16px;
 }
 
+/* Native macOS controls sit inside this toolbar, centered in its first row. */
+.integrated-titlebar .toolbar {
+  min-height: 54px;
+  padding-left: 96px;
+  app-region: drag;
+  user-select: none;
+}
+
+/* Filters and their open menus must still receive pointer events. */
+.integrated-titlebar .toolbar .filter,
+.integrated-titlebar .toolbar .multi-select {
+  app-region: no-drag;
+}
+
 /* Mono readouts: the filter labels, counts and times read like instruments. */
 .toolbar .filter {
   display: flex;
@@ -1258,6 +1272,17 @@ textarea:focus-visible {
 }
 
 @media (max-width: 700px) {
+  /* Wrapped filters open below the toolbar so menus stay inside a narrow window. */
+  .integrated-titlebar .toolbar .multi-select {
+    position: static;
+  }
+
+  .integrated-titlebar .toolbar .multi-select-menu {
+    left: 16px;
+    right: 16px;
+    min-width: 0;
+  }
+
   /* Stacked columns have no height to share, so the page scrolls as a whole again. */
   body {
     height: auto;
