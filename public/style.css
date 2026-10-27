@@ -1,39 +1,42 @@
+/* Hairline: one line per edge, square corners, mono for the readouts. Teal is the only
+   strong colour, so it means live work; amber means a session needs you. */
 :root {
   color-scheme: light dark;
-  --bg: #f4f4f1;
+  --bg: #f6f7f5;
   --surface: #ffffff;
-  --column: #e9e9e4;
-  --border: #d6d6cf;
-  --text: #1d1d1b;
-  --muted: #6b6b66;
-  --accent: #3b6fd8;
+  --column: #eceeea;
+  --border: #dcdfda;
+  --text: #0b0d10;
+  --muted: #6b7077;
+  --accent: #0b7d69;
   --claude: #c8643b;
   --codex: #1f6fd6;
-  --working: #2f8a4c;
-  --waiting: #c27c0e;
-  --idle: #7a7a74;
-  --closed: #a33a3a;
-  --drop: #dbe6fb;
-  --repo-text: 30%;
+  --working: #0b7d69;
+  --waiting: #9a6408;
+  --idle: #a9ada6;
+  --closed: #c03a3a;
+  --drop: #e2f2ee;
+  --repo-text: 32%;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #171716;
-    --surface: #242422;
-    --column: #1e1e1c;
-    --border: #393936;
-    --text: #ecece8;
-    --muted: #a0a09a;
-    --accent: #7ea3f0;
+    --bg: #0a0c0f;
+    --surface: #0e1115;
+    --column: #161a1f;
+    --border: #1f252c;
+    --text: #e6e8eb;
+    --muted: #7d8590;
+    --accent: #4de1c1;
     --claude: #e08a62;
     --codex: #5ea0f2;
-    --working: #5cc27d;
+    --working: #4de1c1;
     --waiting: #e6a640;
-    --idle: #9a9a94;
-    --closed: #e07272;
-    --drop: #26324a;
-    --repo-text: 80%;
+    --idle: #4a525c;
+    --closed: #f07272;
+    --drop: #0f2420;
+    --repo-text: 72%;
   }
 }
 
@@ -54,6 +57,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font: 14px/1.4 system-ui, -apple-system, sans-serif;
+  accent-color: var(--accent);
 }
 
 .top {
@@ -72,29 +76,42 @@ body {
   padding: 12px 16px;
 }
 
+/* Mono readouts: the filter labels, counts and times read like instruments. */
 .toolbar .filter {
   display: flex;
   align-items: center;
   gap: 6px;
   color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .multi-select {
   position: relative;
 }
 
+/* Plain text until pointed at or opened, when its outline shows it is a control. */
 .multi-select summary {
   display: flex;
   align-items: center;
   gap: 6px;
   max-width: 200px;
   padding: 1px 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
+  border: 1px solid transparent;
+  background: none;
   color: var(--text);
+  letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
   list-style: none;
+  transition: border-color 0.15s;
+}
+
+.multi-select summary:hover,
+.multi-select[open] summary {
+  border-color: var(--border);
 }
 
 .multi-select summary::-webkit-details-marker {
@@ -103,11 +120,11 @@ body {
 
 .multi-select summary::after {
   content: '';
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   margin: 0 2px;
-  border-right: 2px solid var(--muted);
-  border-bottom: 2px solid var(--muted);
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
   transform: translateY(-2px) rotate(45deg);
 }
 
@@ -131,9 +148,12 @@ body {
   overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--border);
-  border-radius: 6px;
   background: var(--surface);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .multi-select-clear {
@@ -145,7 +165,6 @@ body {
   align-items: center;
   gap: 12px;
   padding: 0 6px;
-  border-radius: 4px;
 }
 
 .multi-select-option:hover {
@@ -166,10 +185,9 @@ body {
 /* The repo's pill color, so the filter matches the cards. */
 .swatch {
   flex-shrink: 0;
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   margin-right: -2px;
-  border-radius: 50%;
   background: hsl(var(--repo-hue) 60% 50%);
 }
 
@@ -190,25 +208,19 @@ body {
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-/* A grey tick while reloads work, a red "!" once one fails; the title says which. */
+/* A grey light while reloads work, a red one once one fails; the title says which. */
 .updated::before {
-  content: '✓';
-  display: grid;
-  place-items: center;
-  width: 12px;
-  height: 12px;
-  /* Flex centres it on the line box, which sits a little below the digits; this lifts it level. */
-  margin-bottom: 1px;
+  content: '';
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--muted);
-  color: var(--surface);
-  font-size: 8px;
-  font-weight: 700;
 }
 
 .updated:empty::before {
@@ -216,14 +228,12 @@ body {
 }
 
 .updated.stale::before {
-  content: '!';
   background: var(--closed);
-  font-size: 9px;
 }
 
-/* An accent-tinted panel with a divider after it, so the counts read apart
-   from the filter buttons beside them. The min-width fits the usual "12 working"
-   or "3 in Doing", so the filters stay put as the counts change. */
+/* Bare counts with a divider after it, so they read apart from the filters beside them.
+   The min-width fits the usual "12 working" or "3 in Doing", so the filters stay put
+   as the counts change. */
 .summary {
   position: relative;
   display: flex;
@@ -231,12 +241,12 @@ body {
   gap: 12px;
   min-width: 118px;
   margin-right: 17px;
-  padding: 5px 14px;
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  padding: 5px 0;
   color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .summary::after {
@@ -261,30 +271,23 @@ body {
 
 .summary-part strong {
   color: var(--text);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
-.summary-working::before,
-.summary-waiting::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  margin-right: 2px;
-  border-radius: 50%;
+.summary-working strong {
+  color: var(--working);
 }
 
-.summary-working::before {
-  background: var(--working);
-}
-
-.summary-waiting::before {
-  background: var(--waiting);
+.summary-waiting strong {
+  color: var(--waiting);
 }
 
 /* Pushes itself and the updated time to the right end of the toolbar. */
 .usage {
   margin-left: auto;
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
 }
 
 .usage summary {
@@ -443,6 +446,14 @@ body {
 }
 
 .hooks {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+/* The open panels read as prose, so they go back to the body font. */
+.usage-panel,
+.hooks-panel {
+  font-family: system-ui, -apple-system, sans-serif;
   font-size: 12px;
 }
 
@@ -465,7 +476,6 @@ body {
 .hooks-button {
   padding: 2px 10px;
   border: 1px solid var(--border);
-  border-radius: 4px;
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -497,12 +507,13 @@ body {
   font-weight: 600;
 }
 
+/* Cut into segments, like a level gauge. */
 .meter {
   width: 56px;
   height: 6px;
-  border-radius: 999px;
   background: var(--border);
   overflow: hidden;
+  mask: repeating-linear-gradient(90deg, #000 0 5px, transparent 5px 7px);
 }
 
 .meter-fill {
@@ -536,9 +547,8 @@ body {
   margin: 0 auto;
   padding: 8px 12px;
   border: 1px solid var(--closed);
-  border-radius: 6px;
   background: var(--surface);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
   color: var(--closed);
   animation: toast-in 0.2s ease-out;
 }
@@ -574,7 +584,6 @@ body {
   /* The × glyph draws low in its line box; this lifts it to the visual centre. */
   padding: 0 0 3px;
   margin: -4px -6px -4px 8px;
-  border-radius: 4px;
   color: inherit;
   font-size: 20px;
   line-height: 1;
@@ -600,29 +609,40 @@ body {
   min-width: 0;
   padding: 16px;
   overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
+/* No fill: columns are set apart only by a rule down the middle of the gap before them. */
 .column {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--column);
-  border-radius: 8px;
   padding: 8px;
   border: 2px solid transparent;
+  transition: background-color 0.15s, border-color 0.15s;
 }
 
-/* Doing is where the live work is, so it is tinted and outlined to stand out a little. */
-.column[data-column='doing'] {
-  background: color-mix(in srgb, var(--accent) 7%, var(--column));
-  border-color: color-mix(in srgb, var(--accent) 12%, transparent);
+.column + .column::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -9px;
+  width: 1px;
+  background: var(--border);
 }
 
+/* Doing is where the live work is, so its title is bright and its count teal. */
 .column[data-column='doing'] .column-title {
+  color: var(--text);
+}
+
+.column[data-column='doing'] .count {
   color: var(--accent);
 }
 
-/* After Doing, so a drop target looks the same in every column. */
 .column.drop-target {
   background: var(--drop);
   border-color: var(--accent);
@@ -634,15 +654,19 @@ body {
   align-items: baseline;
   flex: none;
   margin: 4px 4px 8px;
-  font-size: 13px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.14em;
   color: var(--muted);
 }
 
 /* The count and the sort arrow after it sit at the right edge. */
 .column-title .count {
   margin: 0 6px 0 auto;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
 }
 
 .sort-toggle {
@@ -673,10 +697,10 @@ body {
   max-width: 240px;
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: 6px;
   background: var(--surface);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
   color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
   font-size: 12px;
   font-weight: 400;
   line-height: 1.4;
@@ -711,29 +735,44 @@ body {
   gap: 10px;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
 .empty {
   margin: 8px 4px;
   color: var(--muted);
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
 }
 
-/* One gap between rows, so a ticket or its editor gets the same room as the rest. */
+/* One gap between rows, so a ticket or its editor gets the same room as the rest.
+   A square outline only: the source shows in the footer, and a live card's outline and
+   left edge take its state's colour. The left padding makes up for the old 3px stripe,
+   so the content keeps its place. */
 .card {
   display: flex;
   flex-direction: column;
   gap: 10px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--codex);
-  border-radius: 8px;
-  padding: 14px 16px 12px;
+  padding: 14px 16px 12px 18px;
   cursor: grab;
+  transition: border-color 0.15s;
 }
 
-.card.source-claude {
-  border-left-color: var(--claude);
+.card:hover {
+  border-color: color-mix(in srgb, var(--muted) 45%, var(--border));
+}
+
+.card:has(.status-working) {
+  border-color: color-mix(in srgb, var(--working) 35%, var(--border));
+  box-shadow: inset 2px 0 0 var(--working);
+}
+
+.card:has(.status-waiting) {
+  border-color: color-mix(in srgb, var(--waiting) 35%, var(--border));
+  box-shadow: inset 2px 0 0 var(--waiting);
 }
 
 .card.dragging {
@@ -743,7 +782,6 @@ body {
 .conflict-warning {
   padding: 6px 8px;
   border: 1px solid color-mix(in srgb, var(--waiting) 55%, var(--border));
-  border-radius: 4px;
   background: color-mix(in srgb, var(--waiting) 8%, var(--surface));
   font-size: 12px;
 }
@@ -763,7 +801,7 @@ body {
   display: block;
   margin: 4px 0;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
   font-size: 11px;
   white-space: pre-line;
 }
@@ -776,9 +814,10 @@ body {
 }
 
 .badge {
-  font-weight: 600;
+  font-family: var(--mono);
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.1em;
 }
 
 .badge-claude {
@@ -794,22 +833,54 @@ body {
   font-size: 11px;
 }
 
+/* A status light and its word in the state's colour, in place of a filled pill. */
 .status {
-  padding: 0 6px;
-  border-radius: 999px;
-  color: var(--surface);
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  font-family: var(--mono);
+}
+
+.status::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .status-working {
-  background: var(--working);
+  color: var(--working);
+}
+
+/* A slow pulse while the session works, so the live ones catch the eye. */
+.status-working::before {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--working) 20%, transparent);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-working::before {
+    animation: none;
+  }
 }
 
 .status-waiting {
-  background: var(--waiting);
+  color: var(--waiting);
 }
 
 .status-idle {
+  color: var(--muted);
+}
+
+.status-idle::before {
   background: var(--idle);
 }
 
@@ -817,14 +888,16 @@ body {
   flex-shrink: 0;
   margin-left: auto;
   color: var(--muted);
+  font-family: var(--mono);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .title {
   margin: 0;
   font-size: 14px;
   line-height: 1.4;
-  font-weight: 600;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 
@@ -849,19 +922,29 @@ textarea:focus-visible {
   outline-offset: 3px;
 }
 
-/* Each repo gets its own hue, from its name, so cards from one repo read as a set. */
+/* Each repo gets its own hue, from its name, so cards from one repo read as a set:
+   its name in that hue after a square of it, like the filter's swatch. */
 .repo {
   flex-shrink: 0;
   max-width: 60%;
   overflow: hidden;
-  padding: 0 7px;
-  border: 1px solid hsl(var(--repo-hue) 60% var(--repo-text));
-  border-radius: 999px;
+  padding: 0 1px;
   color: hsl(var(--repo-hue) 60% var(--repo-text));
+  font-family: var(--mono);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.repo::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  vertical-align: 0.1em;
+  background: hsl(var(--repo-hue) 60% 50%);
 }
 
 /* Shortened to fit the row; the full name is in its tooltip. */
@@ -869,7 +952,7 @@ textarea:focus-visible {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -894,7 +977,7 @@ textarea:focus-visible {
   gap: 6px;
   margin-top: 2px;
   padding-top: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-top: 1px solid var(--border);
 }
 
 /* As tall with or without a ticket, so the card keeps its height while editing. */
@@ -913,7 +996,6 @@ textarea:focus-visible {
 .tag {
   padding: 1px 6px;
   border: 1px solid var(--border);
-  border-radius: 4px;
   font-size: 12px;
   color: var(--text);
   text-decoration: none;
@@ -928,7 +1010,7 @@ textarea:focus-visible {
   padding: 2px 8px;
   border-color: transparent;
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
   font-weight: 400;
   line-height: 18px;
   overflow-wrap: anywhere;
@@ -971,7 +1053,6 @@ textarea:focus-visible {
   width: 24px;
   height: 24px;
   padding: 3px;
-  border-radius: 4px;
 }
 
 .card-actions .icon-button:hover {
@@ -998,7 +1079,6 @@ textarea:focus-visible {
 /* Shows on the card under the pointer, or when tabbed to. */
 .ticket-change {
   padding: 2px 6px;
-  border-radius: 4px;
   font-size: 13px;
   opacity: 0;
 }
@@ -1043,13 +1123,12 @@ textarea:focus-visible {
   min-width: 0;
   padding: 2px 8px;
   border: 1px solid var(--accent);
-  border-radius: 4px;
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
   font-size: 12px;
   line-height: 18px;
 }
@@ -1082,7 +1161,6 @@ textarea:focus-visible {
   padding: 24px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 12px;
   background: var(--surface);
   color: var(--text);
   box-shadow: 0 20px 60px rgb(0 0 0 / 0.35);
@@ -1119,6 +1197,7 @@ textarea:focus-visible {
 #details-title {
   margin: 0;
   font-size: 21px;
+  font-weight: 500;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -1137,6 +1216,10 @@ textarea:focus-visible {
 
 .details-meta dt {
   color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .details-meta dd {
@@ -1161,7 +1244,6 @@ textarea:focus-visible {
 .details-action {
   padding: 5px 9px;
   border: 1px solid var(--border);
-  border-radius: 5px;
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -1196,7 +1278,6 @@ textarea:focus-visible {
   padding: 12px;
   resize: vertical;
   border: 1px solid var(--border);
-  border-radius: 6px;
   background: var(--bg);
   color: var(--text);
   font: inherit;
@@ -1211,6 +1292,11 @@ textarea:focus-visible {
 
   .board {
     grid-template-columns: 1fr;
+  }
+
+  /* Stacked, the columns sit one above another, so the rule between them goes. */
+  .column + .column::before {
+    display: none;
   }
 
   .cards {

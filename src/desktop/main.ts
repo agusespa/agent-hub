@@ -32,7 +32,7 @@ const useLoginShellPath = () => {
  * The window's native background shows before the board paints and while it closes;
  * matching --bg in style.css keeps it from flashing white.
  */
-const backgroundColor = () => (nativeTheme.shouldUseDarkColors ? '#171716' : '#f4f4f1');
+const backgroundColor = () => (nativeTheme.shouldUseDarkColors ? '#0a0c0f' : '#f6f7f5');
 
 const openWindow = (boardUrl: string) => {
   const window = new BrowserWindow({
