@@ -640,8 +640,10 @@ body {
   letter-spacing: 0.04em;
 }
 
-.sort-toggle {
-  font-size: 12px;
+/* Doubled so it beats `.icon-button`'s `font: inherit` further down. */
+.sort-toggle.sort-toggle {
+  font-size: 16px;
+  line-height: 1;
   text-transform: none;
   letter-spacing: 0;
 }
