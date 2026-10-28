@@ -7,8 +7,7 @@
 
 .board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(320px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(328px, 1fr));
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -18,8 +17,7 @@
   scrollbar-color: var(--border) transparent;
 }
 
-/* Columns are set apart by a rule down the middle of the gap before them.
-   The right inset belongs to the header and cards so the scroll area reaches the edge. */
+/* Each column owns the space up to its divider, including the scrollbar gutter. */
 .column {
   position: relative;
   display: flex;
@@ -35,16 +33,15 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -9px;
+  left: -2px;
   width: 1px;
   background: var(--border);
 }
 
-/* Extend the faint wash across half the gap to meet the dividers, keeping content in place. */
+/* The Doing wash fills the column through to its dividers. */
 .column[data-column='doing'] {
   --doing-background: color-mix(in srgb, var(--accent) 3%, var(--bg));
   background: var(--doing-background);
-  box-shadow: -6px 0 0 var(--doing-background), 6px 0 0 var(--doing-background);
 }
 
 .column[data-column='doing'].drop-target {
@@ -70,7 +67,7 @@
   justify-content: space-between;
   align-items: baseline;
   flex: none;
-  margin: 4px 12px 8px 4px;
+  margin: 4px 20px 8px 4px;
   font-family: var(--mono);
   font-size: 11px;
   font-weight: 500;
@@ -114,7 +111,8 @@
   flex-direction: column;
   gap: 10px;
   min-height: 0;
-  padding-right: 8px;
+  /* Leave room for the native overlay thumb even when it expands under the pointer. */
+  padding-right: 16px;
   overflow-y: auto;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
@@ -131,6 +129,11 @@
 @media (max-width: 700px) {
   .board {
     grid-template-columns: 1fr;
+    row-gap: 12px;
+  }
+
+  .column-title {
+    margin-right: 12px;
   }
 
   /* Stacked, the columns sit one above another, so the rule between them goes. */
@@ -138,11 +141,8 @@
     display: none;
   }
 
-  .column[data-column='doing'] {
-    box-shadow: none;
-  }
-
   .cards {
+    padding-right: 8px;
     overflow-y: visible;
     scrollbar-gutter: auto;
   }
