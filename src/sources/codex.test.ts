@@ -1,5 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { mapCodexRateLimits, mapCodexThread, repoNameFromRemote, windowLabel, type CodexThread, type RateLimitsResult } from './codex.js';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { CodexAppServer, mapCodexRateLimits, mapCodexThread, repoNameFromRemote, windowLabel, type CodexThread, type RateLimitsResult } from './codex.js';
+
+describe('Codex title persistence', () => {
+  it.each([false, true])('checks the persisted title after renaming (discard write: %s)', async (discardWrite) => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'agent-hub-codex-title-'));
+    const bin = path.join(directory, 'codex');
+    await writeFile(bin, `#!/usr/bin/env node
+const readline = require('node:readline');
+let name = 'Old title';
+readline.createInterface({ input: process.stdin }).on('line', line => {
+  const { id, method, params } = JSON.parse(line);
+  if (id === undefined) return;
+  if (method === 'initialize') return console.log(JSON.stringify({ id, result: {} }));
+  if (params.threadId !== 'test-thread') return console.log(JSON.stringify({ id, error: { message: 'Wrong thread id' } }));
+  if (method === 'thread/name/set') { if (!${discardWrite}) name = params.name; return console.log(JSON.stringify({ id, result: {} })); }
+  if (method === 'thread/read' && params.includeTurns === false) return console.log(JSON.stringify({ id, result: { thread: { id: params.threadId, name } } }));
+  console.log(JSON.stringify({ id, error: { message: 'Unsupported request' } }));
+});
+`, { mode: 0o755 });
+    const server = new CodexAppServer(bin);
+    try {
+      const rename = server.renameThread('test-thread', 'New title');
+      if (discardWrite) await expect(rename).rejects.toThrow('did not retain');
+      else await expect(rename).resolves.toBeUndefined();
+    } finally {
+      server.stop();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 // Shape of a real `thread/list` item; text fields replaced with placeholders.
 const thread = {
@@ -26,6 +58,7 @@ describe('mapCodexThread', () => {
       id: 'codex:01a157fe-a8bc-7103-9a26-757b4b491657',
       source: 'codex',
       title: 'Thread title',
+      renameId: thread.id,
       cwd: '/Users/me/Code/my-app',
       branch: 'feature/PROJ-7-thing',
       repoHint: 'my-app',

@@ -180,6 +180,59 @@ describe('opening projects', () => {
   });
 });
 
+describe('renaming sessions', () => {
+  const records: SessionRecord[] = [
+    { id: 'claude:a', source: 'claude', renameId: 'claude-session', title: 'Claude title', liveStatus: null },
+    { id: 'codex:b', source: 'codex', renameId: 'codex-thread', title: 'Codex title', liveStatus: null },
+    { id: 'claude:bg-c', source: 'claude', title: 'Background agent', liveStatus: null },
+  ];
+
+  beforeEach(async () => {
+    vi.spyOn(claudeSource, 'fetchClaudeSessions').mockResolvedValue(records.filter((record) => record.source === 'claude'));
+    vi.spyOn(CodexAppServer.prototype, 'listThreads').mockResolvedValue(records.filter((record) => record.source === 'codex'));
+    vi.spyOn(claudeSource, 'fetchClaudeUsage').mockResolvedValue({ source: 'claude', plan: null, windows: [], fetchedAt: 0 });
+    vi.spyOn(CodexAppServer.prototype, 'readUsage').mockResolvedValue({ source: 'codex', plan: null, windows: [], fetchedAt: 0 });
+    server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home') });
+  });
+
+  const rename = (id: unknown, title: unknown) => fetch(`${server!.url}/api/title`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, title }),
+  });
+
+  it('renames each source using its real id, including before the first board poll', async () => {
+    const claude = vi.spyOn(claudeSource, 'renameClaudeSession').mockResolvedValue();
+    const codex = vi.spyOn(CodexAppServer.prototype, 'renameThread').mockResolvedValue();
+    const result = await rename('claude:a', '  Investigate login  ');
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual({ title: 'Investigate login' });
+    expect(claude).toHaveBeenCalledExactlyOnceWith('claude-session', 'Investigate login');
+    expect((await rename('codex:b', 'Review login')).status).toBe(200);
+    expect(codex).toHaveBeenCalledExactlyOnceWith('codex-thread', 'Review login');
+  });
+
+  it('rejects unknown or synthetic sessions and invalid titles without calling a source', async () => {
+    const claude = vi.spyOn(claudeSource, 'renameClaudeSession').mockResolvedValue();
+    const codex = vi.spyOn(CodexAppServer.prototype, 'renameThread').mockResolvedValue();
+    for (const [id, title] of [
+      ['claude:unknown', 'Name'], ['claude:bg-c', 'Name'], ['claude:../../escape', 'Name'],
+      ['claude:a', '   '], ['claude:a', 'x'.repeat(201)], ['claude:a', 'a\nb'],
+      ['claude:a', '\u001b[2J'], ['claude:a', { title: 'Name' }],
+    ]) expect((await rename(id, title)).status).toBe(400);
+    expect(claude).not.toHaveBeenCalled();
+    expect(codex).not.toHaveBeenCalled();
+  });
+
+  it('reports source failures so the editor can retain the draft and retry', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const codex = vi.spyOn(CodexAppServer.prototype, 'renameThread').mockRejectedValueOnce(new Error('Thread unavailable')).mockResolvedValue();
+    const response = await rename('codex:b', 'New title');
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: 'Thread unavailable' });
+    expect((await rename('codex:b', 'New title')).status).toBe(200);
+    expect(codex).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('notes API', () => {
   it('persists notes through server restarts and retains annotated old cards', async () => {
     vi.spyOn(claudeSource, 'fetchClaudeSessions').mockResolvedValue([

@@ -1,4 +1,4 @@
-/* One gap between rows, so a ticket or its editor gets the same room as the rest.
+/* One gap between rows, so the ticket gets the same room as the rest.
    A square outline only: the source shows in the footer, and a live card's outline and
    left edge take its state's colour. The left padding makes up for the old 3px stripe,
    so the content keeps its place. */
@@ -9,7 +9,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   padding: 14px 16px 12px 18px;
-  cursor: grab;
+  cursor: pointer;
   transition: border-color 0.15s;
 }
 
@@ -28,6 +28,7 @@
 }
 
 .card.dragging {
+  cursor: grabbing;
   opacity: 0.5;
 }
 
@@ -164,10 +165,6 @@
   cursor: pointer;
 }
 
-.card-title-button:hover {
-  color: var(--accent);
-}
-
 /* Each repo gets its own hue, from its name, so cards from one repo read as a set:
    its name in that hue after a square of it, like the filter's swatch. */
 .repo {
@@ -226,17 +223,11 @@
   border-top: 1px solid var(--border);
 }
 
-/* As tall with or without a ticket, so the card keeps its height while editing. */
+/* Only cards with a ticket render this row. */
 .card-ticket {
   display: flex;
   align-items: center;
   gap: 4px;
-  min-height: 24px;
-}
-
-.ticket-editor {
-  display: flex;
-  flex: 1;
 }
 
 .tag {
@@ -247,7 +238,7 @@
   text-decoration: none;
 }
 
-/* A light tint with an icon: apart from the faint add button, but quieter than the repo pill. */
+/* A light tint with an icon, quieter than the repo pill. */
 .tag.ticket {
   display: inline-flex;
   align-items: center;
@@ -303,71 +294,6 @@
 .open-session {
   font-size: 18px;
   line-height: 1;
-}
-
-.card.editing {
-  cursor: default;
-}
-
-/* Shows on the card under the pointer, or when tabbed to. */
-.ticket-change {
-  padding: 2px 6px;
-  font-size: 13px;
-  opacity: 0;
-}
-
-.ticket-change:hover {
-  background: var(--column);
-}
-
-.card:hover .ticket-change,
-.ticket-change:focus-visible {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .ticket-change {
-    opacity: 1;
-  }
-}
-
-/* On every card without a key, so it stays faint until pointed at. */
-.ticket-add {
-  border-color: transparent;
-  padding-left: 0;
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  font-size: 11px;
-  line-height: 18px;
-  opacity: 0.6;
-  cursor: pointer;
-}
-
-.ticket-add:hover,
-.ticket-add:focus-visible {
-  color: var(--accent);
-  opacity: 1;
-}
-
-/* Fills the row, so a pasted ticket link fits. */
-.ticket-input {
-  flex: 1;
-  min-width: 0;
-  padding: 2px 8px;
-  border: 1px solid var(--accent);
-  outline: none;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.ticket-input:invalid {
-  border-color: var(--closed);
 }
 
 .notes-indicator {

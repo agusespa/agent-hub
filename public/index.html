@@ -62,12 +62,28 @@
     </div>
     <dialog id="card-details" class="card-details" aria-labelledby="details-title" aria-modal="true">
       <header class="details-header">
-        <h2 id="details-title"></h2>
+        <div class="details-title-area">
+          <h2 id="details-title"><button id="details-title-edit" type="button"></button></h2>
+          <form id="title-editor" hidden>
+            <input id="details-title-input" aria-label="Session title" maxlength="200" required autocomplete="off" aria-describedby="title-status" />
+            <div class="title-editor-actions">
+              <button id="title-save" class="details-action" type="submit">Save title</button>
+              <button id="title-cancel" class="link-button" type="button">Cancel</button>
+              <span id="title-status" role="status" aria-live="polite"></span>
+            </div>
+          </form>
+        </div>
         <button id="details-close" class="icon-button" type="button" aria-label="Close session details" title="Close (Esc)">×</button>
       </header>
       <div id="details-badges" class="details-badges"></div>
       <div class="details-overview">
-        <dl id="details-meta" class="details-meta"></dl>
+        <dl id="details-meta" class="details-meta">
+          <dt>Project</dt><dd id="details-project"></dd>
+          <dt>Folder</dt><dd id="details-folder"></dd>
+          <dt>Branch</dt><dd id="details-branch"></dd>
+          <dt>Ticket</dt><dd id="details-ticket"></dd>
+          <dt>Column</dt><dd id="details-column"></dd>
+        </dl>
         <div class="details-actions">
           <button id="details-session" class="details-action" type="button"></button>
           <button id="details-editor" class="details-action" type="button" title="Open project in VS Code">Open in editor ↗</button>

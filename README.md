@@ -7,6 +7,7 @@ A local macOS app for keeping track of Claude Code and Codex sessions in one kan
 - Organize sessions across **Parked**, **Stand-by**, **Doing**, and **Done**. Sessions move to Doing when they start working.
 - See working, waiting, and idle status; filter by repository, source, or ticket.
 - Attach ticket IDs and notes, reopen Codex sessions, and open project folders in VS Code.
+- Click a session's title inside its details to edit it. Titles save to Claude Code or Codex as well as the board; an already-open Claude Desktop or Codex window may keep showing the old name.
 - Track plan usage and reset times, with desktop alerts for low capacity and unused weekly capacity about to reset.
 - See on the board when sessions mid-turn share a Git worktree or the same named branch within a local repository. A desktop alert comes only once both have edited the same files in their current turns, so parallel tasks on different files stay quiet. File tracking needs Live status and covers Claude's Edit/Write/MultiEdit/NotebookEdit and successful Codex apply_patch edits; shell and other tool edits are missed. Warnings never block edits.
 

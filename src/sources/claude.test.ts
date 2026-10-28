@@ -41,6 +41,7 @@ describe('mapClaudeSessions', () => {
       id: 'claude:sess-1',
       source: 'claude',
       title: 'Fix login redirect',
+      renameId: 'sess-1',
       cwd: '/code/my-app',
       branch: 'PROJ-1-fix',
       liveStatus: 'waiting',
@@ -58,6 +59,7 @@ describe('mapClaudeSessions', () => {
   it('keys background sessions without a session id by their short id', () => {
     const [card] = mapClaudeSessions([agent({ kind: 'background', id: 'k3', state: 'working' })], []);
     expect(card.id).toBe('claude:bg-k3');
+    expect(card.renameId).toBeUndefined();
   });
 
   it('keeps all history without a live agent, however old, with no live status', () => {

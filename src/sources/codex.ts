@@ -32,6 +32,7 @@ export const mapCodexThread = (thread: CodexThread): SessionRecord => ({
   id: `codex:${thread.id}`,
   source: 'codex',
   title: thread.name || `Codex thread ${thread.id.slice(0, 8)}`,
+  renameId: thread.id,
   cwd: thread.cwd ?? undefined,
   branch: branchName(thread.gitInfo?.branch),
   repoHint: repoNameFromRemote(thread.gitInfo?.originUrl),
@@ -109,7 +110,7 @@ interface Pending {
 
 /**
  * Long-lived `codex app-server` over stdio (newline-delimited JSON-RPC without the
- * `jsonrpc` field). Only read methods are sent; the process restarts on the next
+ * `jsonrpc` field). Reads metadata and updates names; the process restarts on the next
  * request if it exits.
  */
 export class CodexAppServer {
@@ -138,6 +139,12 @@ export class CodexAppServer {
 
   async readUsage(): Promise<PlanUsage> {
     return mapCodexRateLimits((await this.request('account/rateLimits/read', undefined)) as RateLimitsResult);
+  }
+
+  async renameThread(threadId: string, name: string): Promise<void> {
+    await this.request('thread/name/set', { threadId, name });
+    const result = await this.request('thread/read', { threadId, includeTurns: false }) as { thread: CodexThread };
+    if (result.thread.name !== name) throw new Error('Codex did not retain the new title; retry');
   }
 
   stop(): void {

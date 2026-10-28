@@ -19,6 +19,8 @@ let repoHues = new Map();
 /** Notes are persisted by the local app; only edits awaiting autosave live in memory. */
 const noteDrafts = new Map();
 let selectedCard = null;
+let titleEdit = null;
+let savingTitle = null;
 
 /** The ticket filter's value for cards without one; ticket IDs are upper case, so it never clashes. */
 const NO_TICKET = 'none';
@@ -159,31 +161,33 @@ const renderFilters = () => {
 
 const startEditing = (card) => {
   editing = { id: card.id, value: card.ticket ?? '' };
-  render({ force: true });
-  document.querySelector('.ticket-input')?.select();
+  renderDetails();
+  $('#details-ticket .ticket-input')?.select();
 };
 
 const stopEditing = () => {
   editing = null;
   render();
+  $('#details-ticket button')?.focus();
 };
 
-/** Enter saves, an empty key removes it; Escape or clicking away cancels. */
+/** Enter saves, an empty key removes it; Escape or Cancel discards the edit. */
 const renderTicketEditor = (card) => {
   const form = el('form', 'ticket-editor');
   const input = el('input', 'ticket-input');
   Object.assign(input, { value: editing.value, placeholder: 'PROJ-1234 or ticket link', maxLength: 500, spellcheck: false, autocomplete: 'off' });
   input.setAttribute('aria-label', 'Ticket ID or link');
+  input.title = 'Enter a ticket ID or link. Clear the field to remove the ticket.';
   input.addEventListener('input', () => {
     editing.value = input.value;
     input.setCustomValidity('');
   });
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') stopEditing();
-  });
-  // Also fires when a save or cancel redraws the card, after `editing` is cleared.
-  input.addEventListener('blur', () => {
-    if (editing?.id === card.id) stopEditing();
+  form.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      stopEditing();
+    }
   });
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -196,20 +200,26 @@ const renderTicketEditor = (card) => {
     }
     saveTicket(card, key);
   });
-  form.append(input);
+  const save = el('button', 'details-action', 'Save');
+  save.type = 'submit';
+  const cancel = el('button', 'details-action', 'Cancel');
+  cancel.type = 'button';
+  cancel.addEventListener('click', stopEditing);
+  form.append(input, save, cancel);
   return form;
 };
 
 /** The ticket and its change button, the editor, or an add button when there is none. */
-const renderTicket = (card) => {
+const renderDetailsTicket = (card) => {
   if (editing?.id === card.id) return [renderTicketEditor(card)];
   const button = (className, text, title) => {
     const node = el('button', className, text);
     Object.assign(node, { type: 'button', title });
+    node.setAttribute('aria-label', title);
     node.addEventListener('click', () => startEditing(card));
     return node;
   };
-  if (!card.ticket) return [button('tag ticket-add', '+ Ticket', 'Add a ticket')];
+  if (!card.ticket) return [button('ticket-add', '+', 'Add a ticket')];
   return [el('span', 'tag ticket', card.ticket), button('icon-button ticket-change', '✎', 'Change or remove the ticket')];
 };
 
@@ -260,6 +270,7 @@ const saveNotes = (id) => {
 // Electron calls this before closing its window, while the local file-writing server is still running.
 window.agentHub = {
   async flushPendingChanges() {
+    if (savingTitle && !(await savingTitle)) return false;
     while (noteDrafts.size || savingView || Object.keys(pendingView).length) {
       const saved = await Promise.all([...noteDrafts.keys()].map(saveNotes).concat(flushView()));
       if (saved.some((result) => !result)) return false;
@@ -273,18 +284,26 @@ const renderDetails = () => {
   const current = board?.cards.find((card) => card.id === selectedCard.id);
   if (current) selectedCard = { ...current };
   const card = selectedCard;
-  $('#details-title').textContent = card.title;
+  $('#details-title-edit').textContent = card.title;
+  $('#details-title-edit').disabled = !card.renameId;
+  $('#details-title-edit').setAttribute('aria-label', card.renameId ? `Edit session title: ${card.title}` : card.title);
   const badges = [el('span', `badge badge-${card.source}`, SOURCE_LABELS[card.source])];
   if (card.liveStatus) badges.push(el('span', `status status-${card.liveStatus}`, STATUS_LABELS[card.liveStatus]));
   $('#details-badges').replaceChildren(...badges);
   const metadata = [
-    ['Project', card.repo],
-    ['Folder', card.cwd ?? 'No folder'],
-    ['Branch', card.branch ?? 'Not reported'],
-    ['Ticket', card.ticket ?? 'No ticket'],
-    ['Column', board?.columns.find((column) => column.id === card.column)?.title ?? card.column],
+    ['project', card.repo],
+    ['folder', card.cwd ?? 'No folder'],
+    ['branch', card.branch ?? 'Not reported'],
+    ['column', board?.columns.find((column) => column.id === card.column)?.title ?? card.column],
   ];
-  $('#details-meta').replaceChildren(...metadata.flatMap(([label, value]) => [el('dt', '', label), el('dd', '', value)]));
+  for (const [field, value] of metadata) $(`#details-${field}`).textContent = value;
+  // Keep the input, caret and focused buttons mounted through polls and notes autosaves.
+  const ticket = $('#details-ticket');
+  const ticketState = JSON.stringify([card.id, editing?.id === card.id ? 'editing' : card.ticket]);
+  if (ticket.dataset.state !== ticketState) {
+    ticket.dataset.state = ticketState;
+    ticket.replaceChildren(...renderDetailsTicket(card));
+  }
   const sessionButton = $('#details-session');
   sessionButton.hidden = !card.openId;
   sessionButton.textContent = `Open in ${SOURCE_LABELS[card.source]} ↗`;
@@ -297,6 +316,8 @@ const renderDetails = () => {
 
 const openDetails = (card) => {
   if (selectedCard && selectedCard.id !== card.id) void saveNotes(selectedCard.id);
+  cancelTitleEdit();
+  editing = null;
   selectedCard = { ...card };
   $('#details-notes').value = noteDrafts.get(card.id)?.text ?? card.notes ?? '';
   renderDetails();
@@ -308,10 +329,84 @@ const closeDetails = () => {
   if (!selectedCard) return;
   const id = selectedCard.id;
   void saveNotes(id);
+  cancelTitleEdit();
+  editing = null;
   selectedCard = null;
   $('#card-details').close();
   [...document.querySelectorAll('.card')].find((card) => card.dataset.id === id)?.querySelector('.card-title-button')?.focus();
 };
+
+const cancelTitleEdit = () => {
+  titleEdit = null;
+  $('#title-editor').hidden = true;
+  $('#details-title').hidden = false;
+};
+
+$('#details-title-edit').addEventListener('click', () => {
+  if (!selectedCard?.renameId || !$('#card-details').open || savingTitle) return;
+  titleEdit = { id: selectedCard.id };
+  $('#title-editor').hidden = false;
+  $('#details-title').hidden = true;
+  $('#details-title-input').value = selectedCard.title;
+  $('#details-title-input').setCustomValidity('');
+  $('#title-status').textContent = `Updates the title in ${SOURCE_LABELS[selectedCard.source]}.`;
+  $('#title-status').classList.remove('save-error');
+  $('#details-title-input').select();
+});
+$('#title-cancel').addEventListener('click', () => {
+  cancelTitleEdit();
+  $('#details-title-edit').focus();
+});
+$('#details-title-input').addEventListener('input', (event) => event.target.setCustomValidity(''));
+$('#details-title-input').addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelTitleEdit();
+    $('#details-title-edit').focus();
+  }
+});
+$('#title-editor').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!titleEdit || savingTitle) return;
+  const edit = titleEdit;
+  const input = $('#details-title-input');
+  const title = input.value.trim();
+  if (!title || /[\p{Cc}\p{Cf}]/u.test(title)) {
+    input.setCustomValidity('Enter a title without control characters.');
+    input.reportValidity();
+    return;
+  }
+  $('#title-save').disabled = true;
+  input.disabled = true;
+  $('#title-status').textContent = 'Saving…';
+  $('#title-status').classList.remove('save-error');
+  savingTitle = (async () => {
+    try {
+      const saved = await send('PUT', '/api/title', { id: edit.id, title });
+      const card = board?.cards.find((candidate) => candidate.id === edit.id);
+      if (card) card.title = saved.title;
+      if (selectedCard?.id === edit.id) selectedCard.title = saved.title;
+      if (titleEdit === edit) {
+        cancelTitleEdit();
+        $('#details-title-edit').focus();
+      }
+      render();
+      return true;
+    } catch (error) {
+      if (titleEdit === edit) {
+        $('#title-status').textContent = `Couldn’t save: ${error.message}. Retry to save.`;
+        $('#title-status').classList.add('save-error');
+      }
+      showError(`Renaming session failed: ${error.message}`);
+      return false;
+    } finally {
+      savingTitle = null;
+      $('#title-save').disabled = false;
+      input.disabled = false;
+    }
+  })();
+});
 
 $('#details-close').addEventListener('click', closeDetails);
 $('#details-session').addEventListener('click', () => selectedCard && openSession(selectedCard.id));
@@ -335,7 +430,7 @@ $('#card-details').addEventListener('cancel', (event) => {
 });
 $('#card-details').addEventListener('keydown', (event) => {
   if (event.key !== 'Tab') return;
-  const controls = [...$('#card-details').querySelectorAll('button:not(:disabled), textarea:not(:disabled)')]
+  const controls = [...$('#card-details').querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')]
     .filter((control) => control.getClientRects().length);
   const first = controls[0];
   const last = controls.at(-1);
@@ -376,11 +471,19 @@ window.addEventListener('pagehide', () => {
 });
 
 const renderCard = (card) => {
-  const isEditing = editing?.id === card.id;
-  const node = el('article', `card source-${card.source}${isEditing ? ' editing' : ''}`);
-  node.draggable = !isEditing;
+  const node = el('article', `card source-${card.source}`);
+  node.draggable = true;
   node.dataset.id = card.id;
+  let dragged = false;
+  node.addEventListener('pointerdown', () => { dragged = false; });
+  node.addEventListener('click', (event) => {
+    // Buttons and expandable warnings keep their own actions. A completed drag
+    // must not turn into a click that opens the session's details.
+    if (dragged || event.target.closest('button, a, input, textarea, select, details')) return;
+    openDetails(card);
+  });
   node.addEventListener('dragstart', (event) => {
+    dragged = true;
     dragging = true;
     dragOrigin = { list: node.parentNode, next: node.nextElementSibling };
     event.dataTransfer.setData('text/plain', card.id);
@@ -424,14 +527,21 @@ const renderCard = (card) => {
     actions.append(open);
   }
   if (actions.children.length) top.append(actions);
-  const ticket = el('div', 'card-ticket');
-  ticket.append(...renderTicket(card));
   const title = el('h3', 'title');
   const titleButton = el('button', 'card-title-button', card.title);
   titleButton.type = 'button';
-  titleButton.addEventListener('click', () => openDetails(card));
+  titleButton.setAttribute('aria-haspopup', 'dialog');
+  titleButton.setAttribute('aria-controls', 'card-details');
+  titleButton.addEventListener('click', () => {
+    if (!dragged) openDetails(card);
+  });
   title.append(titleButton);
-  node.append(top, title, ticket);
+  node.append(top, title);
+  if (card.ticket) {
+    const ticket = el('div', 'card-ticket');
+    ticket.append(el('span', 'tag ticket', card.ticket));
+    node.append(ticket);
+  }
 
   const conflicts = (board.conflicts ?? []).filter((conflict) => conflict.sessionIds.includes(card.id));
   if (conflicts.length) {
@@ -812,9 +922,9 @@ const updateColumns = (sections) => {
   }
 };
 
-/** Holds still while a card is dragged or edited; `force` redraws an open editor. */
-const render = ({ force = false } = {}) => {
-  if (!board || dragging || (editing && !force)) return;
+/** Holds still while a card is dragged; details keep their editor mounted separately. */
+const render = () => {
+  if (!board || dragging) return;
   renderFilters();
   renderUsage();
   renderHooks();
@@ -903,6 +1013,7 @@ const watchForChanges = () => {
 const send = async (method, url, body) => {
   const response = await fetch(url, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? `request failed (${response.status})`);
+  return response.json();
 };
 
 /**
@@ -941,6 +1052,9 @@ const openSession = async (id, target = 'session') => {
 const saveTicket = async (card, key) => {
   const changed = key !== card.ticket;
   card.ticket = key;
+  const current = board?.cards.find((candidate) => candidate.id === card.id);
+  if (current) current.ticket = key;
+  if (selectedCard?.id === card.id) selectedCard.ticket = key;
   stopEditing();
   if (!changed) return;
   try {

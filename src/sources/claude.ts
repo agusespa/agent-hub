@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { promisify } from 'node:util';
-import { listSessions, query, type SDKControlGetUsageResponse, type SDKSessionInfo } from '@anthropic-ai/claude-agent-sdk';
+import { getSessionInfo, listSessions, query, renameSession, type SDKControlGetUsageResponse, type SDKSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { branchName } from '../git.js';
 import type { LiveStatus, PlanUsage, SessionRecord, UsageWindow } from '../types.js';
 
@@ -43,6 +43,7 @@ const toRecord = (key: string, entry: ClaudeHistoryEntry | undefined, agent?: Cl
   id: `claude:${key}`,
   source: 'claude',
   title: entry?.customTitle || agent?.name || `Claude session ${key.slice(0, 8)}`,
+  renameId: entry?.sessionId ?? agent?.sessionId,
   cwd: agent?.cwd || entry?.cwd,
   branch: branchName(entry?.gitBranch),
   liveStatus: agent ? toLiveStatus(agent) : null,
@@ -50,6 +51,12 @@ const toRecord = (key: string, entry: ClaudeHistoryEntry | undefined, agent?: Cl
   lastActiveAt: entry?.lastModified ?? agent?.startedAt,
   createdAt: entry?.createdAt ?? agent?.startedAt,
 });
+
+/** Use the SDK's session mutation so the title is also used by Claude Code. */
+export const renameClaudeSession = async (sessionId: string, title: string): Promise<void> => {
+  await renameSession(sessionId, title);
+  if ((await getSessionInfo(sessionId))?.customTitle !== title) throw new Error('Claude did not retain the new title; retry');
+};
 
 /**
  * Merges live agents with session history. Every live agent and every history entry

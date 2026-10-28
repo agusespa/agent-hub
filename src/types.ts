@@ -32,6 +32,8 @@ export interface SessionRecord {
   id: string;
   source: Source;
   title: string;
+  /** The source's real session id for renaming; absent for synthetic live-agent records. */
+  renameId?: string;
   cwd?: string;
   branch?: string;
   /** Repo name the source already knows (e.g. from a git remote), used before falling back to the cwd. */

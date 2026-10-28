@@ -16,7 +16,7 @@ import { openInApp, projectUrl, sessionUrl } from './openSession.js';
 import { PlacementStore } from './placements.js';
 import { isNotesText, NotesStore } from './notes.js';
 import { isViewPatch, ViewStore, type ViewSettings } from './view.js';
-import { CLAUDE_BIN, fetchClaudeSessions, fetchClaudeUsage } from './sources/claude.js';
+import { CLAUDE_BIN, fetchClaudeSessions, fetchClaudeUsage, renameClaudeSession } from './sources/claude.js';
 import { CODEX_BIN, CodexAppServer } from './sources/codex.js';
 import { COLUMNS, isColumnId, type Card, type LiveStatus, type PlanUsage, type SessionRecord, type Source } from './types.js';
 import { UsageMeter } from './usage.js';
@@ -368,6 +368,22 @@ export const startBoardServer = async ({
         await notes.set(id, text);
         inFlight = undefined;
         return sendJson(res, 200, { ok: true });
+      }
+
+      if (req.method === 'PUT' && url.pathname === '/api/title') {
+        const { id, title } = await readJson(req);
+        if (!isCardId(id) || typeof title !== 'string' || !title.trim() || title.trim().length > 200 || /[\p{Cc}\p{Cf}]/u.test(title)) {
+          return sendJson(res, 400, { error: 'Enter a title of 1–200 characters without control characters' });
+        }
+        // Resolve the real source id from a fresh board, never from caller-supplied metadata.
+        const card = (await getBoard()).cards.find((candidate) => candidate.id === id);
+        if (!card?.renameId) return sendJson(res, 400, { error: 'This session cannot be renamed yet' });
+        const name = title.trim();
+        if (card.source === 'claude') await renameClaudeSession(card.renameId, name);
+        else await codex.renameThread(card.renameId, name);
+        inFlight = undefined;
+        sendEvent('board');
+        return sendJson(res, 200, { title: name });
       }
 
       if (req.method === 'POST' && url.pathname === '/api/open') {
