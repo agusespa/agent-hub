@@ -41,6 +41,8 @@
 }
 
 #details-title {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: 21px;
   font-weight: 500;
@@ -48,61 +50,24 @@
   overflow-wrap: anywhere;
 }
 
-.details-title-area {
-  flex: 1;
-  min-width: 0;
-}
-
-#details-title-edit {
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  overflow-wrap: anywhere;
+/* Edited in place: the outline sits outside the text box, so editing never moves the layout. */
+#details-title[contenteditable='plaintext-only'] {
+  border-radius: 4px;
+  outline: 1px solid transparent;
+  outline-offset: 4px;
   cursor: text;
 }
 
-#details-title-edit:disabled {
-  cursor: default;
+#details-title[contenteditable='plaintext-only']:hover {
+  outline-color: var(--border);
+}
+
+#details-title[contenteditable='plaintext-only']:focus {
+  outline-color: var(--accent);
 }
 
 .details-badges {
   font-size: 12px;
-}
-
-#title-editor {
-  display: grid;
-  gap: 8px;
-}
-
-#details-title-input {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
-  font-size: 21px;
-  font-weight: 500;
-  line-height: 1.3;
-}
-
-.title-editor-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-#title-status {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-#title-status.save-error {
-  color: var(--closed);
 }
 
 .details-meta {

@@ -62,17 +62,7 @@
     </div>
     <dialog id="card-details" class="card-details" aria-labelledby="details-title" aria-modal="true">
       <header class="details-header">
-        <div class="details-title-area">
-          <h2 id="details-title"><button id="details-title-edit" type="button"></button></h2>
-          <form id="title-editor" hidden>
-            <input id="details-title-input" aria-label="Session title" maxlength="200" required autocomplete="off" aria-describedby="title-status" />
-            <div class="title-editor-actions">
-              <button id="title-save" class="details-action" type="submit">Save title</button>
-              <button id="title-cancel" class="link-button" type="button">Cancel</button>
-              <span id="title-status" role="status" aria-live="polite"></span>
-            </div>
-          </form>
-        </div>
+        <h2 id="details-title" spellcheck="false"></h2>
         <button id="details-close" class="icon-button" type="button" aria-label="Close session details" title="Close (Esc)">×</button>
       </header>
       <div id="details-badges" class="details-badges"></div>

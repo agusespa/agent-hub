@@ -19,6 +19,7 @@ let repoHues = new Map();
 /** Notes are persisted by the local app; only edits awaiting autosave live in memory. */
 const noteDrafts = new Map();
 let selectedCard = null;
+/** The title being edited in place: its card and the text to restore on Escape. */
 let titleEdit = null;
 let savingTitle = null;
 
@@ -284,9 +285,18 @@ const renderDetails = () => {
   const current = board?.cards.find((card) => card.id === selectedCard.id);
   if (current) selectedCard = { ...current };
   const card = selectedCard;
-  $('#details-title-edit').textContent = card.title;
-  $('#details-title-edit').disabled = !card.renameId;
-  $('#details-title-edit').setAttribute('aria-label', card.renameId ? `Edit session title: ${card.title}` : card.title);
+  const title = $('#details-title');
+  // Polls must not replace text being typed, or a saved title before its save lands.
+  if (!titleEdit && !savingTitle) title.textContent = card.title;
+  if (card.renameId) {
+    title.contentEditable = 'plaintext-only';
+    title.setAttribute('role', 'textbox');
+    title.setAttribute('aria-label', 'Session title');
+  } else {
+    title.removeAttribute('contenteditable');
+    title.removeAttribute('role');
+    title.removeAttribute('aria-label');
+  }
   const badges = [el('span', `badge badge-${card.source}`, SOURCE_LABELS[card.source])];
   if (card.liveStatus) badges.push(el('span', `status status-${card.liveStatus}`, STATUS_LABELS[card.liveStatus]));
   $('#details-badges').replaceChildren(...badges);
@@ -316,7 +326,7 @@ const renderDetails = () => {
 
 const openDetails = (card) => {
   if (selectedCard && selectedCard.id !== card.id) void saveNotes(selectedCard.id);
-  cancelTitleEdit();
+  titleEdit = null;
   editing = null;
   selectedCard = { ...card };
   $('#details-notes').value = noteDrafts.get(card.id)?.text ?? card.notes ?? '';
@@ -329,83 +339,66 @@ const closeDetails = () => {
   if (!selectedCard) return;
   const id = selectedCard.id;
   void saveNotes(id);
-  cancelTitleEdit();
+  // A title being typed saves on the blur that closing causes, like clicking away.
   editing = null;
   selectedCard = null;
   $('#card-details').close();
   [...document.querySelectorAll('.card')].find((card) => card.dataset.id === id)?.querySelector('.card-title-button')?.focus();
 };
 
-const cancelTitleEdit = () => {
-  titleEdit = null;
-  $('#title-editor').hidden = true;
-  $('#details-title').hidden = false;
-};
-
-$('#details-title-edit').addEventListener('click', () => {
-  if (!selectedCard?.renameId || !$('#card-details').open || savingTitle) return;
-  titleEdit = { id: selectedCard.id };
-  $('#title-editor').hidden = false;
-  $('#details-title').hidden = true;
-  $('#details-title-input').value = selectedCard.title;
-  $('#details-title-input').setCustomValidity('');
-  $('#title-status').textContent = `Updates the title in ${SOURCE_LABELS[selectedCard.source]}.`;
-  $('#title-status').classList.remove('save-error');
-  $('#details-title-input').select();
-});
-$('#title-cancel').addEventListener('click', () => {
-  cancelTitleEdit();
-  $('#details-title-edit').focus();
-});
-$('#details-title-input').addEventListener('input', (event) => event.target.setCustomValidity(''));
-$('#details-title-input').addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    event.stopPropagation();
-    cancelTitleEdit();
-    $('#details-title-edit').focus();
-  }
-});
-$('#title-editor').addEventListener('submit', (event) => {
-  event.preventDefault();
-  if (!titleEdit || savingTitle) return;
-  const edit = titleEdit;
-  const input = $('#details-title-input');
-  const title = input.value.trim();
-  if (!title || /[\p{Cc}\p{Cf}]/u.test(title)) {
-    input.setCustomValidity('Enter a title without control characters.');
-    input.reportValidity();
-    return;
-  }
-  $('#title-save').disabled = true;
-  input.disabled = true;
-  $('#title-status').textContent = 'Saving…';
-  $('#title-status').classList.remove('save-error');
+const saveTitle = (id, title, before) => {
   savingTitle = (async () => {
     try {
-      const saved = await send('PUT', '/api/title', { id: edit.id, title });
-      const card = board?.cards.find((candidate) => candidate.id === edit.id);
+      const saved = await send('PUT', '/api/title', { id, title });
+      const card = board?.cards.find((candidate) => candidate.id === id);
       if (card) card.title = saved.title;
-      if (selectedCard?.id === edit.id) selectedCard.title = saved.title;
-      if (titleEdit === edit) {
-        cancelTitleEdit();
-        $('#details-title-edit').focus();
-      }
-      render();
+      if (selectedCard?.id === id) selectedCard.title = saved.title;
       return true;
     } catch (error) {
-      if (titleEdit === edit) {
-        $('#title-status').textContent = `Couldn’t save: ${error.message}. Retry to save.`;
-        $('#title-status').classList.add('save-error');
-      }
+      if (selectedCard?.id === id && !titleEdit) $('#details-title').textContent = before;
       showError(`Renaming session failed: ${error.message}`);
       return false;
     } finally {
       savingTitle = null;
-      $('#title-save').disabled = false;
-      input.disabled = false;
+      render();
     }
   })();
+};
+
+/** Enter or clicking away saves; Escape restores the title. Empty or unchanged titles do nothing. */
+$('#details-title').addEventListener('focus', (event) => {
+  if (selectedCard?.renameId) titleEdit = { id: selectedCard.id, before: event.target.textContent };
+});
+$('#details-title').addEventListener('keydown', (event) => {
+  if (!titleEdit) return;
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    event.target.blur();
+  } else if (event.key === 'Escape') {
+    // Restores the title instead of closing the dialog.
+    event.preventDefault();
+    event.stopPropagation();
+    event.target.textContent = titleEdit.before;
+    titleEdit = null;
+    event.target.blur();
+  }
+});
+$('#details-title').addEventListener('blur', (event) => {
+  if (!titleEdit) return;
+  const { id, before } = titleEdit;
+  titleEdit = null;
+  const title = event.target.textContent.replace(/\s+/g, ' ').trim();
+  if (!title || title === before) {
+    event.target.textContent = before;
+    return;
+  }
+  if (title.length > 200 || /[\p{Cc}\p{Cf}]/u.test(title)) {
+    event.target.textContent = before;
+    showError('Titles can be up to 200 characters, without control characters');
+    return;
+  }
+  event.target.textContent = title;
+  saveTitle(id, title, before);
 });
 
 $('#details-close').addEventListener('click', closeDetails);
@@ -430,7 +423,7 @@ $('#card-details').addEventListener('cancel', (event) => {
 });
 $('#card-details').addEventListener('keydown', (event) => {
   if (event.key !== 'Tab') return;
-  const controls = [...$('#card-details').querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')]
+  const controls = [...$('#card-details').querySelectorAll('[contenteditable], button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')]
     .filter((control) => control.getClientRects().length);
   const first = controls[0];
   const last = controls.at(-1);
