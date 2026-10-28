@@ -1,0 +1,131 @@
+.card-details {
+  flex-direction: column;
+  gap: 18px;
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  padding: 24px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.35);
+}
+
+.card-details[open] {
+  display: flex;
+}
+
+.card-details::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+
+.details-header,
+.details-badges,
+.details-actions,
+.notes-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.details-header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+#details-close {
+  flex-shrink: 0;
+  font-size: 24px;
+  line-height: 1;
+}
+
+#details-title {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.details-badges {
+  font-size: 12px;
+}
+
+.details-meta {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr);
+  gap: 10px 14px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.details-meta dt {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.details-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.details-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.details-actions {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.details-action {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.details-action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.notes-heading label {
+  font-weight: 600;
+}
+
+#notes-status {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+#notes-status.save-error {
+  color: var(--closed);
+}
+
+#details-notes {
+  flex: 1;
+  width: 100%;
+  min-height: 150px;
+  padding: 12px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.6;
+}

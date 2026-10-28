@@ -1,0 +1,377 @@
+/* One gap between rows, so a ticket or its editor gets the same room as the rest.
+   A square outline only: the source shows in the footer, and a live card's outline and
+   left edge take its state's colour. The left padding makes up for the old 3px stripe,
+   so the content keeps its place. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 14px 16px 12px 18px;
+  cursor: grab;
+  transition: border-color 0.15s;
+}
+
+.card:hover {
+  border-color: color-mix(in srgb, var(--muted) 45%, var(--border));
+}
+
+.card:has(.status-working) {
+  border-color: color-mix(in srgb, var(--working) 35%, var(--border));
+  box-shadow: inset 2px 0 0 var(--working);
+}
+
+.card:has(.status-waiting) {
+  border-color: color-mix(in srgb, var(--waiting) 35%, var(--border));
+  box-shadow: inset 2px 0 0 var(--waiting);
+}
+
+.card.dragging {
+  opacity: 0.5;
+}
+
+.conflict-warning {
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--waiting) 55%, var(--border));
+  background: color-mix(in srgb, var(--waiting) 8%, var(--surface));
+  font-size: 12px;
+}
+
+.conflict-warning summary {
+  color: var(--waiting);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.conflict-warning p {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.conflict-location {
+  display: block;
+  margin: 4px 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: pre-line;
+}
+
+.card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.badge {
+  font-family: var(--mono);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.badge-claude {
+  color: var(--claude);
+}
+
+.badge-codex {
+  color: var(--codex);
+}
+
+.tags .badge,
+.status {
+  font-size: 11px;
+}
+
+/* A status light and its word in the state's colour, in place of a filled pill. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  font-family: var(--mono);
+}
+
+.status::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-working {
+  color: var(--working);
+}
+
+/* A slow pulse while the session works, so the live ones catch the eye. */
+.status-working::before {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--working) 20%, transparent);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-working::before {
+    animation: none;
+  }
+}
+
+.status-waiting {
+  color: var(--waiting);
+}
+
+.status-idle {
+  color: var(--muted);
+}
+
+.status-idle::before {
+  background: var(--idle);
+}
+
+.time {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.card-title-button {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.card-title-button:hover {
+  color: var(--accent);
+}
+
+/* Each repo gets its own hue, from its name, so cards from one repo read as a set:
+   its name in that hue after a square of it, like the filter's swatch. */
+.repo {
+  flex-shrink: 0;
+  max-width: 60%;
+  overflow: hidden;
+  padding: 0 1px;
+  color: hsl(var(--repo-hue) 60% var(--repo-text));
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  vertical-align: 0.1em;
+  background: hsl(var(--repo-hue) 60% 50%);
+}
+
+/* Shortened to fit the row; the full name is in its tooltip. */
+.branch {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A mask, so the icon takes the text colour. */
+.branch::before {
+  content: '';
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: 1px;
+  vertical-align: -0.15em;
+  background-color: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='4.5' cy='3.5' r='1.75'/%3E%3Ccircle cx='4.5' cy='12.5' r='1.75'/%3E%3Ccircle cx='11.5' cy='4.5' r='1.75'/%3E%3Cpath d='M4.5 5.25v5.5M11.5 6.25c0 3-7 2-7 4.5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* Ruled off from the ticket above, so the session's state reads as its own footer. */
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* As tall with or without a ticket, so the card keeps its height while editing. */
+.card-ticket {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.ticket-editor {
+  display: flex;
+  flex: 1;
+}
+
+.tag {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* A light tint with an icon: apart from the faint add button, but quieter than the repo pill. */
+.tag.ticket {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 2px 8px;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  font-family: var(--mono);
+  font-weight: 400;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+/* A mask, like the branch icon, so it takes the accent colour. */
+.tag.ticket::before {
+  content: '';
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  background-color: var(--accent);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M2 6V4.5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1V6a2 2 0 0 0 0 4v1.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V10a2 2 0 0 0 0-4Z'/%3E%3Cpath d='M10 3.5v9' stroke-dasharray='1.5 1.5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.card-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.card-actions .icon-button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+}
+
+.card-actions .icon-button:hover {
+  background: var(--column);
+}
+
+.editor-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='1.5' y='2' width='13' height='12' rx='1.5'/%3E%3Cpath d='M1.5 5h13M6 7.5l-2 2 2 2M10 7.5l2 2-2 2'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.open-session {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.card.editing {
+  cursor: default;
+}
+
+/* Shows on the card under the pointer, or when tabbed to. */
+.ticket-change {
+  padding: 2px 6px;
+  font-size: 13px;
+  opacity: 0;
+}
+
+.ticket-change:hover {
+  background: var(--column);
+}
+
+.card:hover .ticket-change,
+.ticket-change:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .ticket-change {
+    opacity: 1;
+  }
+}
+
+/* On every card without a key, so it stays faint until pointed at. */
+.ticket-add {
+  border-color: transparent;
+  padding-left: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 18px;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.ticket-add:hover,
+.ticket-add:focus-visible {
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* Fills the row, so a pasted ticket link fits. */
+.ticket-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 8px;
+  border: 1px solid var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.ticket-input:invalid {
+  border-color: var(--closed);
+}
+
+.notes-indicator {
+  color: var(--accent);
+  font-size: 15px;
+  line-height: 1;
+}

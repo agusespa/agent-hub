@@ -79,7 +79,11 @@ const settle = async (source: Source, load: Promise<SessionRecord[]>, errors: st
 const STATIC_FILES: Record<string, { file: string; type: string }> = {
   '/': { file: 'index.html', type: 'text/html; charset=utf-8' },
   '/app.js': { file: 'app.js', type: 'text/javascript; charset=utf-8' },
-  '/style.css': { file: 'style.css', type: 'text/css; charset=utf-8' },
+  '/base.css': { file: 'base.css', type: 'text/css; charset=utf-8' },
+  '/toolbar.css': { file: 'toolbar.css', type: 'text/css; charset=utf-8' },
+  '/board.css': { file: 'board.css', type: 'text/css; charset=utf-8' },
+  '/cards.css': { file: 'cards.css', type: 'text/css; charset=utf-8' },
+  '/details.css': { file: 'details.css', type: 'text/css; charset=utf-8' },
   '/icon.svg': { file: 'icon.svg', type: 'image/svg+xml' },
 };
 

@@ -1,0 +1,149 @@
+.workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(320px, 1fr));
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: 16px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Columns are set apart by a rule down the middle of the gap before them.
+   The right inset belongs to the header and cards so the scroll area reaches the edge. */
+.column {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 8px 0 8px 8px;
+  border: 2px solid transparent;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.column + .column::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -9px;
+  width: 1px;
+  background: var(--border);
+}
+
+/* Extend the faint wash across half the gap to meet the dividers, keeping content in place. */
+.column[data-column='doing'] {
+  --doing-background: color-mix(in srgb, var(--accent) 3%, var(--bg));
+  background: var(--doing-background);
+  box-shadow: -6px 0 0 var(--doing-background), 6px 0 0 var(--doing-background);
+}
+
+.column[data-column='doing'].drop-target {
+  --doing-background: var(--drop);
+}
+
+.column[data-column='doing'] .column-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.column[data-column='doing'] .count {
+  color: var(--accent);
+}
+
+.column.drop-target {
+  background: var(--drop);
+  border-color: var(--accent);
+}
+
+.column-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex: none;
+  margin: 4px 12px 8px 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+/* The count and the sort arrow after it sit at the right edge. */
+.column-title .count {
+  margin: 0 6px 0 auto;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* Keep the sort control typography independent of shared icon-button styles. */
+.sort-toggle.sort-toggle {
+  font-size: 16px;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Only a hint: the order comes from dragging, so there is nothing to click. */
+.sort-manual {
+  padding: 0 4px;
+  color: var(--muted);
+  cursor: default;
+}
+
+/* The sort arrow sits at a column's right edge, so its tooltip opens to the left and
+   stays inside the board. */
+.sort-toggle[data-tip]::after {
+  left: auto;
+  right: -4px;
+}
+
+.cards {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding-right: 8px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.empty {
+  margin: 8px 4px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+@media (max-width: 700px) {
+  .board {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stacked, the columns sit one above another, so the rule between them goes. */
+  .column + .column::before {
+    display: none;
+  }
+
+  .column[data-column='doing'] {
+    box-shadow: none;
+  }
+
+  .cards {
+    overflow-y: visible;
+    scrollbar-gutter: auto;
+  }
+}
