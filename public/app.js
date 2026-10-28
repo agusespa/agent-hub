@@ -349,7 +349,9 @@ $('#details-title-edit').addEventListener('click', () => {
   $('#details-title').hidden = true;
   $('#details-title-input').value = selectedCard.title;
   $('#details-title-input').setCustomValidity('');
-  $('#title-status').textContent = `Updates the title in ${SOURCE_LABELS[selectedCard.source]}.`;
+  $('#title-status').textContent = selectedCard.source === 'claude'
+    ? 'Updates the title in Claude. With Live status on, Claude Desktop shows it after the session’s next prompt, unless it was renamed in Desktop.'
+    : `Updates the title in ${SOURCE_LABELS[selectedCard.source]}.`;
   $('#title-status').classList.remove('save-error');
   $('#details-title-input').select();
 });

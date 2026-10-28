@@ -8,7 +8,7 @@ import { PROJECT_ROOT } from './app.js';
 import { ConflictAlerts, sessionConflicts, type SessionConflict } from './conflicts.js';
 import { FILE_ACTIVITY_DIR, FileActivityStore } from './fileActivity.js';
 import { repoNameForCwd } from './git.js';
-import { HookInstaller, type HookState } from './hookInstall.js';
+import { HookInstaller, queueClaudeTitle, type HookState } from './hookInstall.js';
 import { HOOK_STATUS_DIR, HookStatusMerge, HookStatusStore, lastEventBySource } from './hookStatus.js';
 import { LAST_PROMPT_DIR, LastPromptStore } from './lastPrompt.js';
 import { isTicketId, TicketStore } from './ticket.js';
@@ -164,8 +164,11 @@ export const startBoardServer = async ({
   const hookMerge = new HookStatusMerge();
   const hookInstaller = new HookInstaller(dataDir, home);
   let hookState = await hookInstaller.state();
-  // The hook script follows app updates; the hook commands in the tools' configs stay as they are.
-  if (Object.values(hookState).includes('on')) await hookInstaller.writeScript();
+  // The hook script follows app updates, and tools with hooks on get any hook this version added.
+  if (Object.values(hookState).includes('on')) {
+    await hookInstaller.refresh().catch((error: Error) => console.warn(`Live status hooks: ${error.message}`));
+    hookState = await hookInstaller.state();
+  }
   const allowedHosts = new Set<string>();
   const claudeUsageCwd = path.join(dataDir, 'claude-usage');
   const usage = new UsageMeter({
@@ -379,8 +382,12 @@ export const startBoardServer = async ({
         const card = (await getBoard()).cards.find((candidate) => candidate.id === id);
         if (!card?.renameId) return sendJson(res, 400, { error: 'This session cannot be renamed yet' });
         const name = title.trim();
-        if (card.source === 'claude') await renameClaudeSession(card.renameId, name);
-        else await codex.renameThread(card.renameId, name);
+        if (card.source === 'claude') {
+          await renameClaudeSession(card.renameId, name);
+          // The rename is saved; only Claude Desktop's own copy of the title waits on the hook.
+          await queueClaudeTitle(dataDir, card.renameId, name, card.title)
+            .catch((error: Error) => console.warn(`Queueing title for Claude Desktop: ${error.message}`));
+        } else await codex.renameThread(card.renameId, name);
         inFlight = undefined;
         sendEvent('board');
         return sendJson(res, 200, { title: name });

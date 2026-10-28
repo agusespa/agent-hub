@@ -32,6 +32,14 @@ describe('withBoardHooks and withoutBoardHooks', () => {
     expect(hasBoardHooks(userHooks)).toBe(false);
   });
 
+  it('adds foreground title hooks for Claude only', () => {
+    const claude = withBoardHooks({}, 'claude', WRAPPER) as { hooks: Record<string, Array<{ hooks: Array<Record<string, unknown>> }>> };
+    for (const event of ['UserPromptSubmit', 'SessionStart']) {
+      expect(claude.hooks[event]).toContainEqual({ hooks: [{ type: 'command', command: `'${WRAPPER}' claude title`, timeout: 3 }] });
+    }
+    expect(JSON.stringify(withBoardHooks({}, 'codex', WRAPPER))).not.toContain(' title');
+  });
+
   it('adds them once however often it runs', () => {
     const once = withBoardHooks(userHooks, 'codex', WRAPPER);
     expect(withBoardHooks(once, 'codex', WRAPPER)).toEqual(once);
@@ -153,6 +161,52 @@ describe('HookInstaller', () => {
     child.child.stdin?.end(JSON.stringify({ session_id: 's1', cwd: '/repo', hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: '/repo/a.ts' } }));
     await child;
     expect(JSON.parse(await readFile(path.join(dataDir, 'live-status', 'claude-s1.json'), 'utf8'))).toMatchObject({ status: 'working' });
+  });
+
+  it('as a title hook, applies a queued title once, unless the session was renamed elsewhere since', async () => {
+    await new HookInstaller(dataDir, home).set(true);
+    const pending = path.join(dataDir, 'pending-title', 'claude-s1.json');
+    const queue = async (value: object) => {
+      await mkdir(path.dirname(pending), { recursive: true });
+      await writeFile(pending, JSON.stringify({ title: 'New', previous: 'Old', at: Date.now(), ...value }));
+    };
+    const run = async (event: object) => {
+      const child = execFileAsync(path.join(dataDir, 'agent-hub-hook'), ['claude', 'title']);
+      child.child.stdin?.end(JSON.stringify({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'secret', ...event }));
+      const { stdout } = await child;
+      return stdout ? JSON.parse(stdout) : undefined;
+    };
+    expect(await run({})).toBeUndefined();
+    await queue({});
+    expect(await run({ session_title: 'Old' })).toEqual({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', sessionTitle: 'New' } });
+    expect(await run({ session_title: 'Old' })).toBeUndefined();
+    await expect(readdir(path.dirname(pending))).resolves.toEqual([]);
+    // Resuming applies it too, including when only the transcript already has the new title.
+    await queue({});
+    expect(await run({ hook_event_name: 'SessionStart', session_title: 'New' })).toEqual({ hookSpecificOutput: { hookEventName: 'SessionStart', sessionTitle: 'New' } });
+    // A rename made elsewhere since, or a stale queue, wins over the queued title.
+    await queue({});
+    expect(await run({ session_title: 'Renamed in Desktop' })).toBeUndefined();
+    await queue({ at: Date.now() - 8 * 24 * 3_600_000 });
+    expect(await run({})).toBeUndefined();
+    await expect(readdir(path.dirname(pending))).resolves.toEqual([]);
+    // Other events never consume it.
+    await queue({});
+    expect(await run({ hook_event_name: 'Stop' })).toBeUndefined();
+    await expect(readdir(path.dirname(pending))).resolves.toEqual(['claude-s1.json']);
+  });
+
+  it('refreshes only tools that have hooks on, adding hooks a newer version introduced', async () => {
+    await mkdir(path.join(home, '.codex'));
+    const installer = new HookInstaller(dataDir, home);
+    const claudeFile = path.join(home, '.claude', 'settings.json');
+    const old = withBoardHooks({ model: 'opus' }, 'claude', path.join(dataDir, 'agent-hub-hook')) as { hooks: Record<string, unknown> };
+    delete old.hooks.SessionStart;
+    await writeFile(claudeFile, JSON.stringify(old));
+    await installer.refresh();
+    expect(JSON.parse(await readFile(claudeFile, 'utf8')).hooks.SessionStart).toHaveLength(1);
+    expect(await installer.state()).toEqual({ claude: 'on', codex: 'off' });
+    await expect(readFile(path.join(home, '.codex', 'hooks.json'), 'utf8')).rejects.toThrow(/ENOENT/);
   });
 
   it('as a hook, ignores a session id that is not a plain name and still exits 0', async () => {

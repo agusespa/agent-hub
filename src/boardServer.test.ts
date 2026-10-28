@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -206,8 +206,12 @@ describe('renaming sessions', () => {
     expect(result.status).toBe(200);
     expect(await result.json()).toEqual({ title: 'Investigate login' });
     expect(claude).toHaveBeenCalledExactlyOnceWith('claude-session', 'Investigate login');
+    // Claude Desktop's own title follows through the title hook at the session's next prompt.
+    expect(JSON.parse(await readFile(path.join(dataDir, 'pending-title', 'claude-claude-session.json'), 'utf8')))
+      .toEqual({ title: 'Investigate login', previous: 'Claude title', at: expect.any(Number) });
     expect((await rename('codex:b', 'Review login')).status).toBe(200);
     expect(codex).toHaveBeenCalledExactlyOnceWith('codex-thread', 'Review login');
+    expect(await readdir(path.join(dataDir, 'pending-title'))).toEqual(['claude-claude-session.json']);
   });
 
   it('rejects unknown or synthetic sessions and invalid titles without calling a source', async () => {
