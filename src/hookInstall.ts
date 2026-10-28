@@ -33,16 +33,6 @@ const EVENTS: Record<Source, Array<{ event: string; matcher?: string; status: Ho
   ],
 };
 
-/**
- * Events whose hook can set the session title (`sessionTitle`, documented at
- * https://code.claude.com/docs/en/hooks). These run in the foreground, since Claude Code only reads
- * the output of hooks it waits for; the script answers at once when no title is queued.
- */
-const TITLE_EVENTS: Record<Source, string[]> = {
-  claude: ['UserPromptSubmit', 'SessionStart'],
-  codex: [],
-};
-
 const SOURCES = Object.keys(EVENTS) as Source[];
 
 /**
@@ -95,30 +85,18 @@ export const withoutBoardHooks = (config: Json): Json => {
 };
 
 /**
- * `config` with the board's hooks for `source` after any of the user's own. Status hooks run in
- * the background, so they never hold up the session; title hooks return at once when idle.
+ * `config` with the board's hooks for `source` after any of the user's own. They run in the
+ * background, so they never hold up the session.
  */
 export const withBoardHooks = (config: Json, source: Source, wrapper: string): Json => {
   const base = withoutBoardHooks(config);
   const hooks: Json = isObject(base.hooks) ? { ...base.hooks } : {};
-  const add = (event: string, handler: Json, matcher?: string) => {
+  for (const { event, matcher, status } of EVENTS[source]) {
+    const handler = { type: 'command', command: `${shellQuote(wrapper)} ${source} ${status}`, async: true, timeout: 3 };
     const groups = hooks[event];
     hooks[event] = [...(Array.isArray(groups) ? groups : []), { ...(matcher ? { matcher } : {}), hooks: [handler] }];
-  };
-  for (const { event, matcher, status } of EVENTS[source]) {
-    add(event, { type: 'command', command: `${shellQuote(wrapper)} ${source} ${status}`, async: true, timeout: 3 }, matcher);
   }
-  for (const event of TITLE_EVENTS[source]) add(event, { type: 'command', command: `${shellQuote(wrapper)} ${source} title`, timeout: 3 });
   return { ...base, hooks };
-};
-
-/**
- * Queues `title` for the Claude session's title hook, which applies it once at the next prompt or
- * resume. Claude Desktop keeps its own title, which only a rename inside the session updates.
- */
-export const queueClaudeTitle = async (dataDir: string, sessionId: string, title: string, previous: string): Promise<void> => {
-  if (!/^[\w.-]{1,128}$/.test(sessionId)) throw new Error('invalid Claude session id');
-  await writeJsonFile(path.join(dataDir, 'pending-title', `claude-${sessionId}.json`), { title, previous, at: Date.now() });
 };
 
 /** `on` or `off`, or `unavailable` when the tool's config folder does not exist, as when it is not installed. */
@@ -169,8 +147,8 @@ export class HookInstaller {
   }
 
   /**
-   * Brings the hooks of each tool that has them on up to this app's set, so an update that adds a
-   * hook takes effect without turning Live status off and on. Unchanged configs are not written.
+   * Brings the hooks of each tool that has them on up to this app's set, so an update that adds or
+   * drops a hook takes effect without turning Live status off and on. Unchanged configs are not written.
    */
   async refresh(): Promise<void> {
     await this.writeScript();

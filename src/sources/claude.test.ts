@@ -41,7 +41,6 @@ describe('mapClaudeSessions', () => {
       id: 'claude:sess-1',
       source: 'claude',
       title: 'Fix login redirect',
-      renameId: 'sess-1',
       cwd: '/code/my-app',
       branch: 'PROJ-1-fix',
       liveStatus: 'waiting',

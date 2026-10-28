@@ -5,10 +5,7 @@
 // Run as `agent-hub-hook.mjs <source> <status>`. The status comes from the hook's own arguments,
 // and edit events also extract changed paths. Prompts, tool contents and transcripts are never
 // written. It prints nothing and always exits 0, so it never changes what the session does.
-//
-// Run as `agent-hub-hook.mjs claude title`, it instead prints a title the board queued for the
-// session, which Claude Code applies like `/rename` (https://code.claude.com/docs/en/hooks).
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -79,39 +76,10 @@ const recordHookEvent = async (dataDir, [source, status], input, now) => {
   await writeLatest(path.join(dataDir, 'live-status', name), { id, status: status === 'ended' ? null : status, at: now });
 };
 
-/** A queued title older than this is dropped rather than applied to a long-forgotten session. */
-const TITLE_KEEP_MS = 7 * 24 * 3_600_000;
-const TITLE_EVENTS = ['UserPromptSubmit', 'SessionStart'];
-
-/**
- * Returns the hook output that applies `pending-title/claude-<session id>.json`, written by the
- * board on a rename, once. A title set elsewhere since then (one that is neither the title the
- * board replaced nor the queued one) wins, and the queued title is dropped.
- */
-const takePendingTitle = async (dataDir, input, now) => {
-  const { session_id: sessionId, hook_event_name: event, session_title: current } = JSON.parse(input);
-  if (typeof sessionId !== 'string' || !/^[\w.-]{1,128}$/.test(sessionId) || !TITLE_EVENTS.includes(event)) return undefined;
-  const file = path.join(dataDir, 'pending-title', `claude-${sessionId}.json`);
-  const pending = await readFile(file, 'utf8').then((text) => JSON.parse(text)).catch(() => undefined);
-  if (!pending) return undefined;
-  await unlink(file).catch(() => {});
-  if (typeof pending.title !== 'string' || !pending.title || typeof pending.at !== 'number' || now - pending.at > TITLE_KEEP_MS) return undefined;
-  if (typeof current === 'string' && current !== pending.title && current !== pending.previous) return undefined;
-  return { hookSpecificOutput: { hookEventName: event, sessionTitle: pending.title } };
-};
-
 const now = Date.now();
-const dataDir = path.dirname(fileURLToPath(import.meta.url));
-const args = process.argv.slice(2);
 let input = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => (input += chunk));
 process.stdin.on('end', () => {
-  if (args[0] === 'claude' && args[1] === 'title') {
-    takePendingTitle(dataDir, input, now).then((output) => {
-      if (output) process.stdout.write(JSON.stringify(output));
-    }).catch(() => {});
-    return;
-  }
-  recordHookEvent(dataDir, args, input, now).catch(() => {});
+  recordHookEvent(path.dirname(fileURLToPath(import.meta.url)), process.argv.slice(2), input, now).catch(() => {});
 });

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -199,30 +199,22 @@ describe('renaming sessions', () => {
     method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, title }),
   });
 
-  it('renames each source using its real id, including before the first board poll', async () => {
-    const claude = vi.spyOn(claudeSource, 'renameClaudeSession').mockResolvedValue();
+  it('renames Codex threads using their real id, including before the first board poll', async () => {
     const codex = vi.spyOn(CodexAppServer.prototype, 'renameThread').mockResolvedValue();
-    const result = await rename('claude:a', '  Investigate login  ');
+    const result = await rename('codex:b', '  Review login  ');
     expect(result.status).toBe(200);
-    expect(await result.json()).toEqual({ title: 'Investigate login' });
-    expect(claude).toHaveBeenCalledExactlyOnceWith('claude-session', 'Investigate login');
-    // Claude Desktop's own title follows through the title hook at the session's next prompt.
-    expect(JSON.parse(await readFile(path.join(dataDir, 'pending-title', 'claude-claude-session.json'), 'utf8')))
-      .toEqual({ title: 'Investigate login', previous: 'Claude title', at: expect.any(Number) });
-    expect((await rename('codex:b', 'Review login')).status).toBe(200);
+    expect(await result.json()).toEqual({ title: 'Review login' });
     expect(codex).toHaveBeenCalledExactlyOnceWith('codex-thread', 'Review login');
-    expect(await readdir(path.join(dataDir, 'pending-title'))).toEqual(['claude-claude-session.json']);
   });
 
-  it('rejects unknown or synthetic sessions and invalid titles without calling a source', async () => {
-    const claude = vi.spyOn(claudeSource, 'renameClaudeSession').mockResolvedValue();
+  it('rejects Claude, unknown or synthetic sessions and invalid titles without calling a source', async () => {
     const codex = vi.spyOn(CodexAppServer.prototype, 'renameThread').mockResolvedValue();
     for (const [id, title] of [
-      ['claude:unknown', 'Name'], ['claude:bg-c', 'Name'], ['claude:../../escape', 'Name'],
-      ['claude:a', '   '], ['claude:a', 'x'.repeat(201)], ['claude:a', 'a\nb'],
-      ['claude:a', '\u001b[2J'], ['claude:a', { title: 'Name' }],
+      // Claude renames stay off until they can also reach Claude Desktop.
+      ['claude:a', 'Name'], ['codex:unknown', 'Name'], ['claude:bg-c', 'Name'], ['codex:../../escape', 'Name'],
+      ['codex:b', '   '], ['codex:b', 'x'.repeat(201)], ['codex:b', 'a\nb'],
+      ['codex:b', '\u001b[2J'], ['codex:b', { title: 'Name' }],
     ]) expect((await rename(id, title)).status).toBe(400);
-    expect(claude).not.toHaveBeenCalled();
     expect(codex).not.toHaveBeenCalled();
   });
 

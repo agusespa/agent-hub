@@ -32,7 +32,7 @@ export interface SessionRecord {
   id: string;
   source: Source;
   title: string;
-  /** The source's real session id for renaming; absent for synthetic live-agent records. */
+  /** The source's real session id for renaming; absent where the source cannot rename it. */
   renameId?: string;
   cwd?: string;
   branch?: string;
