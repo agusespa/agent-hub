@@ -9,6 +9,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { SessionRecord } from './types.js';
 import * as sessionOpening from './openSession.js';
+import { FileActivityStore } from './fileActivity.js';
 
 let dataDir: string;
 let server: BoardServer | undefined;
@@ -93,7 +94,7 @@ describe('hooks', () => {
 });
 
 describe('concurrent work alerts', () => {
-  it('includes conflicts on the board and notifies only when a Working overlap starts', async () => {
+  it('shows a shared workspace on the board, alerts only for shared files, and keeps the board warning if tracking fails', async () => {
     const repo = path.join(dataDir, 'repo');
     await mkdir(repo);
     await promisify(execFile)('git', ['init', '--initial-branch=main'], { cwd: repo });
@@ -108,21 +109,46 @@ describe('concurrent work alerts', () => {
     const notify = vi.fn();
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home'), onConflictAlert: notify });
-    // No page has requested the board: the desktop monitor still notifies.
+    const activity = path.join(dataDir, 'file-activity');
+    await mkdir(activity);
+    const at = Date.now();
+    const read = async () => (await fetch(`${server!.url}/api/board`)).json();
+    const write = (name: string, value: object) => writeFile(path.join(activity, `${name}.json`), JSON.stringify(value));
+    const shared = path.join(repo, 'shared.ts');
+    // Sharing a worktree is a board warning only, even once the desktop monitor has checked.
+    await vi.advanceTimersByTimeAsync(5000);
+    expect((await read()).conflicts).toEqual([expect.objectContaining({ kind: 'worktree', files: [] })]);
+    await write('claude-edit', { id: 'claude:a', at, files: [shared] });
+    await write('codex-other', { id: 'codex:b', at, files: [path.join(repo, 'other.ts')] });
+    expect((await read()).conflicts[0].files).toEqual([]);
+    expect(notify).not.toHaveBeenCalled();
+    await write('codex-edit', { id: 'codex:b', at, files: [shared] });
+    // The desktop monitor delivers the alert without a page poll.
     await vi.advanceTimersByTimeAsync(5000);
     await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
-    const read = async () => (await fetch(`${server!.url}/api/board`)).json();
-    expect((await read()).conflicts).toEqual([expect.objectContaining({ kind: 'worktree', sessionIds: ['claude:a', 'codex:b'] })]);
-    expect(notify).toHaveBeenCalledTimes(1);
-    await read();
-    expect(notify).toHaveBeenCalledTimes(1);
+    expect((await read()).conflicts).toEqual([expect.objectContaining({ kind: 'worktree', sessionIds: ['claude:a', 'codex:b'], files: ['shared.ts'] })]);
+    // Neither a new turn with the same overlap nor answering a permission prompt repeats it.
+    await write('claude-turn', { id: 'claude:a', at: at + 1, files: [], reset: true });
+    expect((await read()).conflicts[0].files).toEqual([]);
+    await write('claude-again', { id: 'claude:a', at: at + 2, files: [shared] });
     records[1].liveStatus = 'waiting';
-    expect((await read()).conflicts).toEqual([]);
+    expect((await read()).conflicts[0].files).toEqual(['shared.ts']);
     records[1].liveStatus = 'working';
     await read();
-    expect(notify).toHaveBeenCalledTimes(2);
+    expect(notify).toHaveBeenCalledTimes(1);
+    // Once a turn ends the overlap rearms, but only new shared edits alert again.
     records[0].liveStatus = 'idle';
+    await write('claude-stop', { id: 'claude:a', at: at + 3, files: [], reset: true });
     expect((await read()).conflicts).toEqual([]);
+    records[0].liveStatus = 'working';
+    expect((await read()).conflicts[0].files).toEqual([]);
+    expect(notify).toHaveBeenCalledTimes(1);
+    await write('claude-shared', { id: 'claude:a', at: at + 4, files: [shared] });
+    await read();
+    expect(notify).toHaveBeenCalledTimes(2);
+    vi.spyOn(FileActivityStore.prototype, 'read').mockRejectedValueOnce(new Error('tracking unavailable'));
+    expect((await read()).conflicts).toEqual([expect.objectContaining({ kind: 'worktree', files: [] })]);
+    expect(notify).toHaveBeenCalledTimes(2);
   });
 });
 

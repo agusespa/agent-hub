@@ -117,6 +117,44 @@ describe('HookInstaller', () => {
     expect(written).not.toContain('secret');
   });
 
+  it('as a hook, records only the paths of file edits and resets them when a turn starts or stops', async () => {
+    await new HookInstaller(dataDir, home).set(true);
+    const run = async (source: string, status: string, event: object) => {
+      const child = execFileAsync(path.join(dataDir, 'agent-hub-hook'), [source, status]);
+      child.child.stdin?.end(JSON.stringify({ session_id: 's1', cwd: '/repo', ...event }));
+      await child;
+    };
+    const activity = path.join(dataDir, 'file-activity');
+    const recorded = async () => Promise.all((await readdir(activity)).sort().map(async (name) => readFile(path.join(activity, name), 'utf8')));
+    await run('claude', 'working', { hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: 'src/a.ts', old_string: 'secret', new_string: 'secret' } });
+    await run('claude', 'working', { hook_event_name: 'PostToolUse', tool_name: 'NotebookEdit', tool_input: { notebook_path: '/repo/n.ipynb' } });
+    // Shell commands cannot be attributed to paths, so they are skipped.
+    await run('claude', 'working', { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'echo secret > x.ts' } });
+    const patch = '*** Begin Patch\n*** Add File: new.ts\n+secret\n*** Update File: /repo/old.ts\n*** Move to: moved.ts\n*** Delete File: gone.ts\n*** End Patch';
+    await run('codex', 'working', { hook_event_name: 'PostToolUse', tool_name: 'apply_patch', tool_input: { command: patch }, tool_response: 'Success. Updated the following files:\nA new.ts' });
+    await run('codex', 'working', { hook_event_name: 'PostToolUse', tool_name: 'apply_patch', tool_input: { command: patch }, tool_response: { output: 'apply_patch verification failed' } });
+    const edits = (await recorded()).map((text) => JSON.parse(text));
+    expect(edits.map(({ id, files }) => ({ id, files })).sort((a, b) => a.id.localeCompare(b.id) || a.files[0].localeCompare(b.files[0]))).toEqual([
+      { id: 'claude:s1', files: ['/repo/n.ipynb'] },
+      { id: 'claude:s1', files: ['/repo/src/a.ts'] },
+      { id: 'codex:s1', files: ['/repo/new.ts', '/repo/old.ts', '/repo/moved.ts', '/repo/gone.ts'] },
+    ]);
+    expect((await recorded()).join('')).not.toContain('secret');
+    await run('claude', 'idle', { hook_event_name: 'Stop' });
+    expect((await recorded()).map((text) => JSON.parse(text)).filter((event) => event.reset)).toEqual([
+      { id: 'claude:s1', at: expect.any(Number), files: [], reset: true },
+    ]);
+  });
+
+  it('as a hook, still records the status when file activity cannot be written', async () => {
+    await new HookInstaller(dataDir, home).set(true);
+    await writeFile(path.join(dataDir, 'file-activity'), 'not a folder');
+    const child = execFileAsync(path.join(dataDir, 'agent-hub-hook'), ['claude', 'working']);
+    child.child.stdin?.end(JSON.stringify({ session_id: 's1', cwd: '/repo', hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: '/repo/a.ts' } }));
+    await child;
+    expect(JSON.parse(await readFile(path.join(dataDir, 'live-status', 'claude-s1.json'), 'utf8'))).toMatchObject({ status: 'working' });
+  });
+
   it('as a hook, ignores a session id that is not a plain name and still exits 0', async () => {
     await new HookInstaller(dataDir, home).set(true);
     const child = execFileAsync(path.join(dataDir, 'agent-hub-hook'), ['claude', 'idle']);

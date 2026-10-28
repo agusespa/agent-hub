@@ -6,6 +6,7 @@ import path from 'node:path';
 import { cardsStartedWorking, isOnBoard, orderCards, toCard } from './board.js';
 import { PROJECT_ROOT } from './app.js';
 import { ConflictAlerts, sessionConflicts, type SessionConflict } from './conflicts.js';
+import { FILE_ACTIVITY_DIR, FileActivityStore } from './fileActivity.js';
 import { repoNameForCwd } from './git.js';
 import { HookInstaller, type HookState } from './hookInstall.js';
 import { HOOK_STATUS_DIR, HookStatusMerge, HookStatusStore, lastEventBySource } from './hookStatus.js';
@@ -178,6 +179,7 @@ export const startBoardServer = async ({
   const lastStatuses = new Map<string, LiveStatus | null>();
   const missing = new Set<Source>();
   const conflictAlerts = new ConflictAlerts();
+  const fileActivity = new FileActivityStore(path.join(dataDir, FILE_ACTIVITY_DIR));
 
   // Usage is checked for alerts on its own timer, since pages only poll while the board is
   // open. Each check reads the last answers; the reads it starts show in the next one.
@@ -238,7 +240,12 @@ export const startBoardServer = async ({
         console.log(`Moved ${card.id} to doing: it started working`);
       }
     }
-    const conflicts = await sessionConflicts(cards);
+    // File tracking only enriches the early warning; a tracking failure must not suppress it.
+    const changedFiles = await fileActivity.read().catch((error: Error) => {
+      console.warn(`File activity: ${error.message}`);
+      return new Map<string, string[]>();
+    });
+    const conflicts = await sessionConflicts(cards, undefined, changedFiles);
     const unavailable = [...missing, ...Object.entries(SOURCE_NAMES)
       .filter(([, name]) => errors.some((error) => error.startsWith(`${name}:`)))
       .map(([source]) => source)];

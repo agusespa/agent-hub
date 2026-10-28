@@ -436,11 +436,12 @@ const renderCard = (card) => {
   const conflicts = (board.conflicts ?? []).filter((conflict) => conflict.sessionIds.includes(card.id));
   if (conflicts.length) {
     const warning = el('details', 'conflict-warning');
-    warning.append(el('summary', '', '⚠ Concurrent work'));
+    warning.append(el('summary', '', conflicts.some((conflict) => conflict.files.length > 0) ? '⚠ Overlapping file edits' : '⚠ Concurrent work'));
     for (const conflict of conflicts) {
       const other = board.cards.find((candidate) => candidate.id === conflict.sessionIds.find((id) => id !== card.id));
       const description = el('p', '', `${conflict.kind === 'worktree' ? 'Same worktree' : `Same branch (${conflict.branch})`}: ${other ? `${SOURCE_LABELS[other.source]} · ${other.title}` : 'another working session'}`);
       description.append(el('span', 'conflict-location', conflict.location));
+      if (conflict.files.length > 0) description.append(el('span', 'conflict-location', `Observed edits to the same files:\n${conflict.files.join('\n')}`));
       if (other?.openId) {
         const open = el('button', 'link-button', `Open in ${SOURCE_LABELS[other.source]} ↗`);
         open.type = 'button';

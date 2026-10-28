@@ -4,9 +4,11 @@ import type { SessionRecord } from '../types.js';
 
 const notifications = new Set<Notification>();
 
+/** Only sent once both sessions have edited the same files; sharing a workspace alone is a board warning. */
 export const conflictAlert = (conflict: SessionConflict, sessions: SessionRecord[]) => ({
-  title: conflict.kind === 'worktree' ? 'Two sessions working in the same worktree' : 'Two sessions working on the same branch',
-  body: `${conflict.sessionIds.map((id) => sessions.find((session) => session.id === id)?.title ?? id).join(' · ')}\n${conflict.kind === 'worktree' ? conflict.location : conflict.branch}`,
+  title: conflict.kind === 'worktree' ? 'Two sessions edited the same files' : 'Two sessions on one branch edited the same files',
+  body: `${conflict.sessionIds.map((id) => sessions.find((session) => session.id === id)?.title ?? id).join(' · ')}\n${
+    conflict.files.slice(0, 3).join(', ')}${conflict.files.length > 3 ? ` (+${conflict.files.length - 3} more)` : ''}`,
 });
 
 /** Keep notifications alive so their click handlers work; callers attach test listeners before showing. */

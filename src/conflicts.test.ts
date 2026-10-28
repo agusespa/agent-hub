@@ -14,16 +14,37 @@ const session = (id: string, cwd: string, liveStatus: LiveStatus | null = 'worki
 const worktree = (root: string, branch: string | undefined = 'main', commonDir = '/repo/.git'): Worktree => ({ root, branch, commonDir });
 
 describe('sessionConflicts', () => {
+  it('warns without file evidence and only lists paths observed in both sessions', async () => {
+    const records = [session('claude:a', '/repo'), session('codex:b', '/repo')];
+    const resolve = async () => worktree('/repo');
+    expect(await sessionConflicts(records, resolve)).toEqual([expect.objectContaining({ files: [] })]);
+    expect(await sessionConflicts(records, resolve, new Map([['claude:a', ['/repo/a.ts']]]))).toEqual([expect.objectContaining({ files: [] })]);
+    expect(await sessionConflicts(records, resolve, new Map([['claude:a', ['/repo/a.ts']], ['codex:b', ['/repo/b.ts']]]))).toEqual([expect.objectContaining({ files: [] })]);
+    const files = new Map([['claude:a', ['/repo/shared.ts', '/outside.ts', '/repo/other.ts']], ['codex:b', ['/outside.ts', '/repo/shared.ts']]]);
+    expect(await sessionConflicts(records, resolve, files)).toEqual([expect.objectContaining({ files: ['shared.ts'] })]);
+  });
+
+  it('compares paths relative to separate worktrees on the same branch', async () => {
+    const records = [session('claude:a', '/one'), session('codex:b', '/two')];
+    const files = new Map([['claude:a', ['/one/src/shared.ts']], ['codex:b', ['/two/src/shared.ts']]]);
+    expect(await sessionConflicts(records, async (cwd) => worktree(cwd), files)).toEqual([expect.objectContaining({ kind: 'branch', files: ['src/shared.ts'] })]);
+    files.set('codex:b', ['/two/src/other.ts']);
+    expect(await sessionConflicts(records, async (cwd) => worktree(cwd), files)).toEqual([expect.objectContaining({ kind: 'branch', files: [] })]);
+  });
+
   it('warns across sources and subfolders in one worktree, without a duplicate branch warning', async () => {
     const resolve = vi.fn(async () => worktree('/repo'));
-    const conflicts = await sessionConflicts([session('claude:a', '/repo/src'), session('codex:b', '/repo')], resolve);
+    const conflicts = await sessionConflicts([session('claude:a', '/repo/src'), session('codex:b', '/repo')], resolve,
+      new Map([['claude:a', ['/repo/shared.ts']], ['codex:b', ['/repo/shared.ts']]]));
     expect(conflicts).toEqual([expect.objectContaining({ kind: 'worktree', location: '/repo', sessionIds: ['claude:a', 'codex:b'] })]);
   });
 
-  it('requires both sessions to be Working, regardless of their recorded branch', async () => {
-    for (const status of ['idle', 'waiting', null] as const) {
+  it('requires both sessions to be mid-turn, regardless of their recorded branch', async () => {
+    for (const status of ['idle', null] as const) {
       expect(await sessionConflicts([session('claude:a', '/repo'), session('codex:b', '/repo', status)], async () => worktree('/repo'))).toEqual([]);
     }
+    // A permission prompt pauses the turn without ending the overlap.
+    expect(await sessionConflicts([session('claude:a', '/repo'), session('codex:b', '/repo', 'waiting')], async () => worktree('/repo'))).toHaveLength(1);
   });
 
   it('warns for matching branches only within the same local repository', async () => {
@@ -53,15 +74,21 @@ describe('sessionConflicts', () => {
 });
 
 describe('ConflictAlerts', () => {
-  it('notifies once per overlap, rearms after it ends, and does not rearm on a source failure', async () => {
-    const conflicts = await sessionConflicts([session('claude:a', '/repo'), session('codex:b', '/repo')], async () => worktree('/repo'));
+  it('stays silent for a shared workspace and alerts once files overlap, until the workspace overlap ends', async () => {
+    const [shared] = await sessionConflicts([session('claude:a', '/repo'), session('codex:b', '/repo')], async () => worktree('/repo'));
+    const overlap = { ...shared, files: ['shared.ts'] };
     const alerts = new ConflictAlerts();
-    expect(alerts.take(conflicts)).toEqual(conflicts);
-    expect(alerts.take(conflicts)).toEqual([]);
-    expect(alerts.take([], ['codex'])).toEqual([]);
-    expect(alerts.take(conflicts)).toEqual([]);
+    expect(alerts.take([shared])).toEqual([]);
+    expect(alerts.take([overlap])).toEqual([overlap]);
+    expect(alerts.take([overlap])).toEqual([]);
+    // Starting another turn, changing files, or temporarily losing a source cannot repeat the alert.
+    expect(alerts.take([shared])).toEqual([]);
+    expect(alerts.take([{ ...overlap, files: ['another.ts'] }])).toEqual([]);
+    expect(alerts.take([], ['claude'])).toEqual([]);
+    expect(alerts.take([overlap])).toEqual([]);
     expect(alerts.take([])).toEqual([]);
-    expect(alerts.take(conflicts)).toEqual(conflicts);
+    expect(alerts.take([shared])).toEqual([]);
+    expect(alerts.take([overlap])).toEqual([overlap]);
   });
 });
 
@@ -79,6 +106,10 @@ describe('readWorktree with Git', () => {
     await symlink(repo, link);
     const initial = await readWorktree(path.join(link, 'src'));
     expect(initial).toEqual({ root: await realpath(repo), commonDir: await realpath(path.join(repo, '.git')), branch: 'main' });
+    // A not-yet-created leaf still resolves through a symlinked parent.
+    expect(await sessionConflicts([session('claude:a', path.join(link, 'src')), session('codex:b', repo)], readWorktree,
+      new Map([['claude:a', [path.join(link, 'src', 'new.ts')]], ['codex:b', [path.join(repo, 'src', 'new.ts')]]])))
+      .toEqual([expect.objectContaining({ files: ['src/new.ts'] })]);
     await git(['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'Initial']);
     const other = path.join(dir, 'other');
     await git(['worktree', 'add', '--force', other, 'main']);
