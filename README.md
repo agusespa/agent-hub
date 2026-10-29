@@ -9,7 +9,7 @@ A local macOS app for keeping track of Claude Code and Codex sessions in one kan
 - Tickets and notes per session, and Codex titles editable from the board.
 - Open sessions in Codex and project folders in VS Code.
 - Plan usage and reset times, with alerts for low capacity and unused weekly capacity.
-- Concurrent-work warnings for sessions sharing a worktree or branch, with an alert when they edit the same files.
+- Concurrent-work warnings for sessions sharing a worktree or branch, including through edits outside their own project, with an alert when they edit the same files.
 
 ## Install
 

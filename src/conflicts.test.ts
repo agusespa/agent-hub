@@ -39,6 +39,32 @@ describe('sessionConflicts', () => {
     expect(conflicts).toEqual([expect.objectContaining({ kind: 'worktree', location: '/repo', sessionIds: ['claude:a', 'codex:b'] })]);
   });
 
+  it('follows edits outside a session\'s own project into the worktree they landed in', async () => {
+    // Real folders: an edited file's worktree is looked up from its nearest existing folder.
+    const base = await realpath(await mkdtemp(path.join(tmpdir(), 'agent-hub-outside-')));
+    try {
+      const [hub, api, web] = ['hub', 'api', 'web'].map((name) => path.join(base, name));
+      for (const folder of [path.join(hub, 'src'), path.join(api, 'src'), web]) await mkdir(folder, { recursive: true });
+      const resolve = vi.fn(async (folder: string) => {
+        const root = [hub, api, web].find((candidate) => folder === candidate || folder.startsWith(`${candidate}/`));
+        return root ? worktree(root, 'main', `${root}/.git`) : undefined;
+      });
+      const records = [session('claude:a', hub), session('codex:b', api)];
+      // Working in another session's project is concurrent work there, before any shared file.
+      expect(await sessionConflicts(records, resolve, new Map([['claude:a', [`${api}/src/a.ts`, `${hub}/src/own.ts`]]])))
+        .toEqual([expect.objectContaining({ kind: 'worktree', location: api, files: [] })]);
+      expect(await sessionConflicts(records, resolve, new Map([['claude:a', [`${api}/src/a.ts`]], ['codex:b', [`${api}/src/a.ts`]]])))
+        .toEqual([expect.objectContaining({ kind: 'worktree', location: api, files: ['src/a.ts'] })]);
+      // Both outside their own projects, in a third one.
+      expect(await sessionConflicts(records, resolve, new Map([['claude:a', [`${web}/x.ts`]], ['codex:b', [`${web}/x.ts`, `${base}/y.ts`]]])))
+        .toEqual([expect.objectContaining({ kind: 'worktree', location: web, files: ['x.ts'] })]);
+      // Edits inside a session's own worktree need no lookup of their own.
+      expect(resolve).not.toHaveBeenCalledWith(path.join(hub, 'src'));
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
   it('requires both sessions to be mid-turn, regardless of their recorded branch', async () => {
     for (const status of ['idle', null] as const) {
       expect(await sessionConflicts([session('claude:a', '/repo'), session('codex:b', '/repo', status)], async () => worktree('/repo'))).toEqual([]);
@@ -117,6 +143,12 @@ describe('readWorktree with Git', () => {
     expect(linked?.commonDir).toBe(initial?.commonDir);
     expect(linked?.root).not.toBe(initial?.root);
     expect(linked?.branch).toBe('main');
+    // An edit from a session whose own folder is outside any repository still lands in this one.
+    const outside = path.join(dir, 'notes');
+    await mkdir(outside);
+    expect(await sessionConflicts([session('claude:a', outside), session('codex:b', other)], readWorktree,
+      new Map([['claude:a', [path.join(repo, 'src', 'deep', 'new.ts')]], ['codex:b', [path.join(other, 'src', 'deep', 'new.ts')]]])))
+      .toEqual([expect.objectContaining({ kind: 'branch', files: ['src/deep/new.ts'] })]);
     expect((await sessionConflicts([session('claude:a', repo), session('codex:b', other)]))[0]?.kind).toBe('branch');
     await git(['checkout', '-b', 'feature']);
     expect((await readWorktree(repo))?.branch).toBe('feature');

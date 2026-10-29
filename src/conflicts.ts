@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { realpath } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { SessionRecord } from './types.js';
@@ -46,9 +46,29 @@ const canonicalPath = async (file: string): Promise<string> => {
   }
 };
 
+/** The nearest existing folder above a file, so Git can place one that was deleted or not yet created. */
+const existingFolder = async (file: string): Promise<string> => {
+  const parent = path.dirname(file);
+  if (parent === file) return file;
+  return stat(parent).then((info) => (info.isDirectory() ? parent : existingFolder(parent)), () => existingFolder(parent));
+};
+
+const relativeTo = (root: string, file: string): string | undefined => {
+  const relative = path.relative(root, file);
+  return relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative) ? relative : undefined;
+};
+
+interface Workspace {
+  worktree: Worktree;
+  /** Paths changed this turn, relative to the worktree root. */
+  files: Set<string>;
+}
+
 /**
  * Sessions mid-turn (Working, or Waiting on a prompt) that share a worktree or branch, with the
- * paths both changed this turn. Board columns and historical branch names are not evidence.
+ * paths both changed this turn. A session works in its own folder's worktree and in any other
+ * worktree it edited files in, since agents can change files outside their project. Board columns
+ * and historical branch names are not evidence.
  */
 export const sessionConflicts = async (
   sessions: SessionRecord[],
@@ -57,38 +77,55 @@ export const sessionConflicts = async (
 ): Promise<SessionConflict[]> => {
   // A permission prompt pauses a turn without ending it, so answering one must not rearm an alert.
   const working = sessions.filter((session) => (session.liveStatus === 'working' || session.liveStatus === 'waiting') && session.cwd);
-  const locations = new Map(await Promise.all(
-    [...new Set(working.map((session) => session.cwd!))].map(async (cwd) => [cwd, await resolveWorktree(cwd)] as const),
-  ));
-  const filesBySession = new Map(await Promise.all(working.map(async (session) => {
-    const worktree = locations.get(session.cwd!);
-    const files = worktree ? await Promise.all((changedFiles.get(session.id) ?? []).filter(path.isAbsolute).map(async (file) => {
-      const relative = path.relative(worktree.root, await canonicalPath(file));
-      return relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative) ? relative : undefined;
-    })) : [];
-    return [session.id, new Set(files.filter((file): file is string => file !== undefined))] as const;
-  })));
-  const conflicts: SessionConflict[] = [];
+  // One lookup per folder per check.
+  const lookups = new Map<string, Promise<Worktree | undefined>>();
+  const lookup = (folder: string) => {
+    let found = lookups.get(folder);
+    if (!found) lookups.set(folder, (found = resolveWorktree(folder)));
+    return found;
+  };
+  const workspaces = await Promise.all(working.map(async (session) => {
+    const home = await lookup(session.cwd!);
+    const edits = await Promise.all((changedFiles.get(session.id) ?? []).filter(path.isAbsolute).map(async (changed) => {
+      const file = await canonicalPath(changed);
+      // Only edits outside the session's own worktree need a lookup of their own.
+      const worktree = home && relativeTo(home.root, file) ? home : await lookup(await existingFolder(file));
+      const relative = worktree && relativeTo(worktree.root, file);
+      return worktree && relative ? [{ worktree, relative }] : [];
+    }));
+    const byRoot = new Map<string, Workspace>(home ? [[home.root, { worktree: home, files: new Set() }]] : []);
+    for (const { worktree, relative } of edits.flat()) {
+      const workspace = byRoot.get(worktree.root) ?? { worktree, files: new Set<string>() };
+      workspace.files.add(relative);
+      byRoot.set(worktree.root, workspace);
+    }
+    return [...byRoot.values()];
+  }));
+  const conflicts = new Map<string, SessionConflict>();
   for (let i = 0; i < working.length; i++) {
-    const a = locations.get(working[i].cwd!);
-    if (!a) continue;
     for (let j = i + 1; j < working.length; j++) {
-      const b = locations.get(working[j].cwd!);
-      if (!b) continue;
-      const kind = a.root === b.root ? 'worktree'
-        : a.commonDir === b.commonDir && a.branch && a.branch === b.branch ? 'branch' : undefined;
-      if (!kind) continue;
-      const files = [...filesBySession.get(working[i].id)!].filter((file) => filesBySession.get(working[j].id)!.has(file)).sort();
+      const pairs = workspaces[i].flatMap((a) => workspaces[j].map((b) => [a, b] as const));
+      // A shared worktree already covers the branch checked out in that repository.
+      const sharedRepos = new Set(pairs.filter(([a, b]) => a.worktree.root === b.worktree.root).map(([a]) => a.worktree.commonDir));
       const sessionIds = [working[i].id, working[j].id].sort() as [string, string];
-      const identity = kind === 'worktree' ? a.root : a.commonDir;
-      const location = kind === 'worktree' ? a.root : [a.root, b.root].sort().join('\n');
-      conflicts.push({
-        key: JSON.stringify([kind, identity, kind === 'branch' ? a.branch : null, ...sessionIds]),
-        kind, location, branch: a.branch, sessionIds, files,
-      });
+      for (const [a, b] of pairs) {
+        const kind = a.worktree.root === b.worktree.root ? 'worktree'
+          : a.worktree.commonDir === b.worktree.commonDir && !sharedRepos.has(a.worktree.commonDir)
+            && a.worktree.branch && a.worktree.branch === b.worktree.branch ? 'branch' : undefined;
+        if (!kind) continue;
+        const files = [...a.files].filter((file) => b.files.has(file));
+        const identity = kind === 'worktree' ? a.worktree.root : a.worktree.commonDir;
+        const key = JSON.stringify([kind, identity, kind === 'branch' ? a.worktree.branch : null, ...sessionIds]);
+        const previous = conflicts.get(key);
+        const roots = new Set([...(previous?.location.split('\n') ?? []), a.worktree.root, b.worktree.root]);
+        conflicts.set(key, {
+          key, kind, location: [...roots].sort().join('\n'), branch: a.worktree.branch, sessionIds,
+          files: [...new Set([...(previous?.files ?? []), ...files])].sort(),
+        });
+      }
     }
   }
-  return conflicts;
+  return [...conflicts.values()];
 };
 
 /**
