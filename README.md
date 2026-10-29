@@ -8,8 +8,8 @@ A local macOS app for keeping track of Claude Code and Codex sessions in one kan
 - Working, waiting and idle status, with filters by project, source and ticket.
 - Tickets and notes per session, and Codex titles editable from the board.
 - Open sessions in Codex and project folders in VS Code.
-- Plan usage and reset times, with alerts for low capacity and unused weekly capacity.
-- Concurrent-work warnings for sessions sharing a worktree or branch, including through edits outside their own project, with an alert when they edit the same files.
+- Plan usage and reset times, with alerts for low capacity and unused weekly capacity, an alert level and quiet hours.
+- Concurrent-work warnings for sessions sharing a worktree or branch, including through edits outside their own project, with alerts when they edit the same files and, if chosen in Settings, when they start sharing.
 
 ## Install
 
@@ -27,6 +27,8 @@ npm run package
 ```
 
 Move the generated `Agent Hub.app` from `out/Agent Hub-darwin-arm64/` to `/Applications` and open it.
+
+Agent Hub only works as the desktop app: opening its address in a browser shows a notice instead of the board. To test changes in a browser during development, run `npm run dev` and open http://localhost:4317.
 
 ### Sign the app for notifications
 

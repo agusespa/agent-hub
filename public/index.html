@@ -71,11 +71,27 @@
                 <div class="multi-select-option"><label><input type="radio" name="theme" value="dark" />Dark</label></div>
               </div>
             </section>
-            <section id="notifications" class="settings-section" aria-label="Notifications" hidden>
+            <section id="notifications" class="settings-section" aria-label="Notifications">
               <h3>Notifications</h3>
-              <div class="multi-select-option"><label><input type="checkbox" id="usage-alerts" />Usage running low or about to reset</label></div>
-              <div class="multi-select-option"><label><input type="checkbox" id="conflict-alerts" />Sessions editing the same files</label></div>
-              <div class="settings-actions">
+              <div class="multi-select-option">
+                <label><input type="checkbox" data-setting="usageAlerts" />Limit nearly used up</label>
+                <select class="settings-select" data-setting="closePercent" aria-label="Alert when a limit is this much used">
+                  <option value="80">at 80%</option>
+                  <option value="90">at 90%</option>
+                  <option value="95">at 95%</option>
+                </select>
+              </div>
+              <div class="multi-select-option"><label><input type="checkbox" data-setting="spareAlerts" />Weekly room about to reset unused</label></div>
+              <div class="multi-select-option"><label title="Two working sessions share a worktree or branch"><input type="checkbox" data-setting="sharedAlerts" />Possible concurrent work</label></div>
+              <div class="multi-select-option"><label title="Two working sessions edited the same files"><input type="checkbox" data-setting="conflictAlerts" />Overlapping file edits</label></div>
+              <div class="multi-select-option">
+                <label><input type="checkbox" data-setting="quietHours" />Quiet hours</label>
+                <select class="settings-select hour-select" data-setting="quietFrom" aria-label="Quiet from"></select>
+                <span class="settings-range">–</span>
+                <select class="settings-select hour-select" data-setting="quietTo" aria-label="Quiet until"></select>
+              </div>
+              <div class="multi-select-option settings-indent"><label><input type="checkbox" data-setting="quietWeekends" />And all weekend</label></div>
+              <div id="notifications-actions" class="settings-actions">
                 <button id="notifications-test" class="settings-button" type="button">Send a test</button>
                 <button id="notifications-settings" class="settings-button" type="button" title="Allow Agent Hub and choose banners or alerts">macOS settings ↗</button>
               </div>

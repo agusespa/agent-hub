@@ -439,6 +439,33 @@
   display: none;
 }
 
+.settings-select {
+  flex: none;
+  padding: 1px 2px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.settings-select:disabled,
+.settings-select:disabled + .settings-range,
+.multi-select-option label:has(input:disabled) {
+  color: var(--muted);
+}
+
+/* The quiet hours row puts its two hours side by side, with a dash between them. */
+.settings-range {
+  margin: 0 -8px;
+  color: var(--muted);
+}
+
+/* An option that belongs to the one above it. */
+.settings-indent {
+  padding-left: 28px;
+}
+
 .settings-actions {
   display: flex;
   gap: 8px;

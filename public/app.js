@@ -33,7 +33,8 @@ const NO_TICKET = 'none';
  */
 const view = {
   hiddenRepos: [], hiddenSources: [], hiddenTickets: [], oldestFirst: [], layout: 'kanban',
-  theme: 'system', usageAlerts: true, conflictAlerts: true, keepDays: 45,
+  theme: 'system', usageAlerts: true, closePercent: 90, spareAlerts: true, sharedAlerts: false, conflictAlerts: true, keepDays: 45,
+  quietHours: false, quietFrom: 18, quietTo: 8, quietWeekends: false,
 };
 let viewLoaded = false;
 let pendingView = {};
@@ -975,15 +976,21 @@ const updateColumns = (sections) => {
 
 /**
  * The settings menu's choices. "Match macOS" leaves the page to the system's colours; light or
- * dark sets them (see base.css). Only the desktop app sends notifications, so only it shows them.
+ * dark sets them (see base.css). Testing notifications and opening their macOS settings need the
+ * desktop app, so a development preview in a browser leaves those buttons out.
  */
 const renderSettings = () => {
   if (view.theme === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = view.theme;
   for (const option of document.querySelectorAll('#theme input')) option.checked = option.value === view.theme;
-  $('#notifications').hidden = !board.notifications;
-  $('#usage-alerts').checked = view.usageAlerts;
-  $('#conflict-alerts').checked = view.conflictAlerts;
+  $('#notifications-actions').hidden = !board.notifications;
+  for (const control of document.querySelectorAll('#notifications [data-setting]')) {
+    if (control.type === 'checkbox') control.checked = view[control.dataset.setting];
+    else control.value = String(view[control.dataset.setting]);
+  }
+  // A choice that only matters with its switch on waits for it.
+  for (const control of document.querySelectorAll('[data-setting="closePercent"]')) control.disabled = !view.usageAlerts;
+  for (const control of document.querySelectorAll('[data-setting^="quiet"]:not([data-setting="quietHours"])')) control.disabled = !view.quietHours;
   for (const option of document.querySelectorAll('#keep-days input')) option.checked = Number(option.value) === view.keepDays;
 };
 
@@ -1156,13 +1163,21 @@ $('#theme').addEventListener('change', (event) => {
   saveView('theme');
   render();
 });
-for (const [selector, key] of [['#usage-alerts', 'usageAlerts'], ['#conflict-alerts', 'conflictAlerts']]) {
-  $(selector).addEventListener('change', (event) => {
-    view[key] = event.target.checked;
-    saveView(key);
-    render();
-  });
+// Alert switches are true or false, and the alert level and quiet hours are numbers.
+for (const select of document.querySelectorAll('.hour-select')) {
+  select.append(...Array.from({ length: 24 }, (_, hour) => {
+    const option = el('option', '', `${String(hour).padStart(2, '0')}:00`);
+    option.value = String(hour);
+    return option;
+  }));
 }
+$('#notifications').addEventListener('change', (event) => {
+  const key = event.target.dataset.setting;
+  if (!key) return;
+  view[key] = event.target.type === 'checkbox' ? event.target.checked : Number(event.target.value);
+  saveView(key);
+  render();
+});
 // The server decides which sessions are on the board, so the board reloads once this is saved.
 $('#keep-days').addEventListener('change', async (event) => {
   view.keepDays = Number(event.target.value);
