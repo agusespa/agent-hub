@@ -283,16 +283,16 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 2px;
   margin-left: auto;
 }
 
+/* Narrower than tall, so the two icons sit together without shrinking the click target's height. */
 .card-actions .icon-button {
   display: grid;
   place-items: center;
-  width: 24px;
+  width: 20px;
   height: 24px;
-  padding: 3px;
+  padding: 0;
 }
 
 .card-actions .icon-button:hover {
