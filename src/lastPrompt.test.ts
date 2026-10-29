@@ -42,4 +42,15 @@ describe('LastPromptStore', () => {
     expect(await readdir(hookDir)).toEqual(['claude-new.json']);
     expect((await store.read(now)).get('claude:old')).toBe(now - 13 * 3_600_000);
   });
+
+  it('persists recency under the permanent conversation ID as executions rotate', async () => {
+    const id = 'claude:local_conversation';
+    const aliases = new Map([['claude:first', id], ['claude:second', id]]);
+    await writeFile(file, JSON.stringify({ cards: { [id]: 10, 'claude:first': 20, 'codex:other': 5 } }));
+    await hookFile('claude-second', { id: 'claude:second', at: 30 });
+    const store = new LastPromptStore(hookDir, file);
+    expect(await store.read(30, aliases)).toEqual(new Map([[id, 30], ['codex:other', 5]]));
+    expect(JSON.parse(await readFile(file, 'utf8')).cards).toEqual({ [id]: 30, 'codex:other': 5 });
+    expect((await new LastPromptStore(hookDir, file).read(40, aliases)).get(id)).toBe(30);
+  });
 });

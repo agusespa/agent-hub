@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ClaudeDesktopSession } from './claudeDesktop.js';
 import { mapClaudeSessions, mapClaudeUsage, toLiveStatus, type ClaudeAgent, type ClaudeHistoryEntry } from './claude.js';
 
 const agent = (overrides: Partial<ClaudeAgent>): ClaudeAgent => ({
@@ -31,51 +32,80 @@ describe('toLiveStatus', () => {
   });
 });
 
+const desktop = (overrides: Partial<ClaudeDesktopSession> = {}): ClaudeDesktopSession => ({
+  sessionId: 'local_conversation', cliSessionId: 'sess-1', priorCliSessionIds: [],
+  title: 'Desktop title', cwd: '/code/my-app', createdAt: 900, lastActivityAt: 6_000,
+  ...overrides,
+});
+
 describe('mapClaudeSessions', () => {
-  it('merges a live agent with its history entry', () => {
+  it('uses Desktop identity and metadata with the current execution status', () => {
     const [card] = mapClaudeSessions(
-      [agent({ sessionId: 'sess-1', name: 'default name', status: 'waiting', waitingFor: 'permission prompt' })],
-      [history({ customTitle: 'Fix login redirect', gitBranch: 'PROJ-1-fix', createdAt: 900 })],
+      [agent({ sessionId: 'sess-1', name: 'Execution name', status: 'waiting', waitingFor: 'permission' })],
+      [history({ customTitle: 'Old title', gitBranch: 'PROJ-1-fix', createdAt: 800 })], [desktop()],
     );
     expect(card).toEqual({
-      id: 'claude:sess-1',
-      source: 'claude',
-      title: 'Fix login redirect',
-      cwd: '/code/my-app',
-      branch: 'PROJ-1-fix',
-      liveStatus: 'waiting',
-      waitingFor: 'permission prompt',
-      lastActiveAt: 5_000,
-      createdAt: 900,
+      id: 'claude:local_conversation', aliases: ['claude:sess-1'], activityId: 'claude:sess-1',
+      source: 'claude', title: 'Desktop title', cwd: '/code/my-app', branch: 'PROJ-1-fix',
+      liveStatus: 'waiting', waitingFor: 'permission', lastActiveAt: 6_000, createdAt: 900,
     });
   });
 
-  it('falls back to the agent name, then a short id', () => {
-    const cards = mapClaudeSessions([agent({ sessionId: 'aaaa1111-x', name: 'Named' }), agent({ sessionId: 'bbbb2222-y' })], []);
-    expect(cards.map((c) => c.title)).toEqual(['Named', 'Claude session bbbb2222']);
-  });
-
-  it('keys background sessions without a session id by their short id', () => {
-    const [card] = mapClaudeSessions([agent({ kind: 'background', id: 'k3', state: 'working' })], []);
-    expect(card.id).toBe('claude:bg-k3');
-    expect(card.renameId).toBeUndefined();
-  });
-
-  it('keeps all history without a live agent, however old, with no live status', () => {
-    const cards = mapClaudeSessions([], [history({ sessionId: 'new', lastModified: 10 }), history({ sessionId: 'old', lastModified: 1 })]);
-    expect(cards.map((c) => [c.id, c.liveStatus])).toEqual([
-      ['claude:new', null],
-      ['claude:old', null],
+  it('excludes terminal history, terminal processes and background agents', () => {
+    const agents = [agent({ sessionId: 'terminal', status: 'busy' }), agent({ kind: 'background', id: 'background', state: 'working' })];
+    expect(mapClaudeSessions(agents, [history({ sessionId: 'terminal' })], [])).toEqual([]);
+    expect(mapClaudeSessions(agents, [history({ sessionId: 'terminal' })], [desktop()])).toEqual([
+      expect.objectContaining({ id: 'claude:local_conversation', liveStatus: null }),
     ]);
   });
 
-  it('makes one card for a live agent and its history entry', () => {
-    const cards = mapClaudeSessions([agent({ sessionId: 'sess-1', status: 'idle' })], [history({ lastModified: 1 })]);
-    expect(cards).toHaveLength(1);
+  it('keeps the same card through repeated CLI ID changes, even before new history is written', () => {
+    const states = [
+      desktop({ cliSessionId: 'first' }),
+      desktop({ cliSessionId: 'second', priorCliSessionIds: ['first'] }),
+      desktop({ cliSessionId: 'third', priorCliSessionIds: ['first', 'second'] }),
+    ];
+    for (const state of states) {
+      const cards = mapClaudeSessions([agent({ sessionId: state.cliSessionId, status: 'busy' })],
+        [history({ sessionId: 'first' })], [state]);
+      expect(cards).toHaveLength(1);
+      expect(cards[0]).toMatchObject({ id: 'claude:local_conversation', liveStatus: 'working', activityId: `claude:${state.cliSessionId}` });
+    }
+    expect(mapClaudeSessions([], [], [states[2]])[0].id).toBe('claude:local_conversation');
   });
 
-  it('only shows the waiting reason while waiting', () => {
-    const [card] = mapClaudeSessions([agent({ sessionId: 's', status: 'idle', waitingFor: 'stale' })], []);
+  it('does not inherit live state from a superseded execution', () => {
+    const cards = mapClaudeSessions([agent({ sessionId: 'old', status: 'busy' })], [history({ sessionId: 'old' })],
+      [desktop({ priorCliSessionIds: ['old'] })]);
+    expect(cards[0]).toMatchObject({ liveStatus: null, activityId: 'claude:sess-1', aliases: ['claude:sess-1', 'claude:old'] });
+  });
+
+  it('shows new Desktop conversations before a CLI ID or transcript exists', () => {
+    const [card] = mapClaudeSessions([], [], [desktop({ cliSessionId: undefined })]);
+    expect(card).toMatchObject({ id: 'claude:local_conversation', title: 'Desktop title', aliases: [], liveStatus: null });
+  });
+
+  it('keeps distinct Desktop conversations and forks with matching titles and ancestry', () => {
+    const cards = mapClaudeSessions([], [], [
+      desktop({ sessionId: 'local_parent', cliSessionId: 'parent' }),
+      desktop({ sessionId: 'local_fork', cliSessionId: 'fork', priorCliSessionIds: ['parent'] }),
+      desktop({ sessionId: 'local_other', cliSessionId: 'other' }),
+    ]);
+    expect(cards.map((card) => card.id)).toEqual(['claude:local_parent', 'claude:local_fork', 'claude:local_other']);
+    expect(cards[0].aliases).toEqual(['claude:parent']);
+    expect(cards[1].aliases).toEqual(['claude:fork']);
+  });
+
+  it('does not assign shared prior executions to either fork', () => {
+    const cards = mapClaudeSessions([], [], [
+      desktop({ sessionId: 'local_a', cliSessionId: 'a', priorCliSessionIds: ['shared'] }),
+      desktop({ sessionId: 'local_b', cliSessionId: 'b', priorCliSessionIds: ['shared'] }),
+    ]);
+    expect(cards.map((card) => card.aliases)).toEqual([['claude:a'], ['claude:b']]);
+  });
+
+  it('only shows a waiting reason while waiting', () => {
+    const [card] = mapClaudeSessions([agent({ sessionId: 'sess-1', status: 'idle', waitingFor: 'stale' })], [], [desktop()]);
     expect(card.waitingFor).toBeUndefined();
   });
 });

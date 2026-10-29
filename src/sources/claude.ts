@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { listSessions, query, type SDKControlGetUsageResponse, type SDKSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { branchName } from '../git.js';
 import type { LiveStatus, PlanUsage, SessionRecord, UsageWindow } from '../types.js';
+import { readClaudeDesktopSessions, type ClaudeDesktopSession } from './claudeDesktop.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -35,43 +36,54 @@ const FROM_STATE: Partial<Record<NonNullable<ClaudeAgent['state']>, LiveStatus>>
 export const toLiveStatus = (agent: ClaudeAgent): LiveStatus | null =>
   (agent.status && FROM_STATUS[agent.status]) ?? (agent.state && FROM_STATE[agent.state]) ?? null;
 
-const agentKey = (agent: ClaudeAgent): string =>
-  agent.sessionId ?? (agent.id ? `bg-${agent.id}` : `pid-${agent.pid ?? agent.startedAt}`);
-
 /**
- * A session from its history entry, its live agent, or both.
- *
- * TODO: offer renaming (`renameId`) once a documented route also updates Claude Desktop's title.
- * Checked 2026-10-28: the SDK's `renameSession()` and a hook's `sessionTitle` reach Claude Code
- * only, and Desktop keeps any title it did not generate itself, so the two would disagree.
+ * Desktop defines the cards and their permanent IDs. CLI history only enriches a
+ * known conversation; terminal sessions and background agents never create cards.
  */
-const toRecord = (key: string, entry: ClaudeHistoryEntry | undefined, agent?: ClaudeAgent): SessionRecord => ({
-  id: `claude:${key}`,
-  source: 'claude',
-  title: entry?.customTitle || agent?.name || `Claude session ${key.slice(0, 8)}`,
-  cwd: agent?.cwd || entry?.cwd,
-  branch: branchName(entry?.gitBranch),
-  liveStatus: agent ? toLiveStatus(agent) : null,
-  waitingFor: agent?.status === 'waiting' ? agent.waitingFor : undefined,
-  lastActiveAt: entry?.lastModified ?? agent?.startedAt,
-  createdAt: entry?.createdAt ?? agent?.startedAt,
-});
-
-/**
- * Merges live agents with session history. Every live agent and every history entry
- * becomes a record.
- */
-export const mapClaudeSessions = (agents: ClaudeAgent[], history: ClaudeHistoryEntry[]): SessionRecord[] => {
+export const mapClaudeSessions = (
+  agents: ClaudeAgent[], history: ClaudeHistoryEntry[], desktop: ClaudeDesktopSession[] = [],
+): SessionRecord[] => {
   const historyById = new Map(history.map((entry) => [entry.sessionId, entry]));
-  const records = new Map<string, SessionRecord>();
-  for (const agent of agents) {
-    const key = agentKey(agent);
-    records.set(key, toRecord(key, agent.sessionId ? historyById.get(agent.sessionId) : undefined, agent));
+  const liveById = new Map(agents.filter((agent) => agent.kind === 'interactive' && agent.sessionId)
+    .map((agent) => [agent.sessionId!, agent]));
+  const conversations = [...new Map(desktop.map((session) => [session.sessionId, session])).values()];
+  const owners = new Map<string, Set<string>>();
+  const currentOwners = new Map<string, Set<string>>();
+  for (const session of conversations) {
+    if (session.cliSessionId) {
+      const ids = currentOwners.get(session.cliSessionId) ?? new Set<string>();
+      ids.add(session.sessionId);
+      currentOwners.set(session.cliSessionId, ids);
+    }
+    for (const id of [session.cliSessionId, ...session.priorCliSessionIds]) {
+      if (!id) continue;
+      const ids = owners.get(id) ?? new Set<string>();
+      ids.add(session.sessionId);
+      owners.set(id, ids);
+    }
   }
-  for (const entry of history) {
-    if (!records.has(entry.sessionId)) records.set(entry.sessionId, toRecord(entry.sessionId, entry));
-  }
-  return [...records.values()];
+  return conversations.map((session) => {
+    // Shared ancestry is not evidence that two Desktop conversations are the same.
+    const cliIds = [...new Set([session.cliSessionId, ...[...session.priorCliSessionIds].reverse()])]
+      .filter((id): id is string => Boolean(id) && (currentOwners.get(id!) ?? owners.get(id!))?.size === 1 &&
+        (currentOwners.get(id!) ?? owners.get(id!))?.has(session.sessionId) === true);
+    const currentId = session.cliSessionId && cliIds.includes(session.cliSessionId) ? session.cliSessionId : undefined;
+    const entry = cliIds.map((id) => historyById.get(id)).find((entry) => entry !== undefined);
+    const agent = currentId ? liveById.get(currentId) : undefined;
+    return {
+      id: `claude:${session.sessionId}`,
+      aliases: cliIds.map((id) => `claude:${id}`),
+      activityId: currentId ? `claude:${currentId}` : undefined,
+      source: 'claude',
+      title: session.title || entry?.customTitle || agent?.name || `Claude conversation ${session.sessionId.slice(6, 14)}`,
+      cwd: session.cwd || agent?.cwd || entry?.cwd,
+      branch: branchName(entry?.gitBranch),
+      liveStatus: agent ? toLiveStatus(agent) : null,
+      waitingFor: agent?.status === 'waiting' ? agent.waitingFor : undefined,
+      lastActiveAt: session.lastActivityAt ?? entry?.lastModified ?? agent?.startedAt,
+      createdAt: session.createdAt ?? entry?.createdAt ?? agent?.startedAt,
+    };
+  });
 };
 
 const fetchAgents = async (claudeBin: string): Promise<ClaudeAgent[]> => {
@@ -95,10 +107,9 @@ const fetchHistory = async (): Promise<ClaudeHistoryEntry[]> =>
     lastModified,
   }));
 
-/** `usageCwd` is where the board reads plan usage; the short-lived process there is not a session to show. */
-export const fetchClaudeSessions = async (claudeBin: string, usageCwd: string): Promise<SessionRecord[]> => {
-  const [agents, history] = await Promise.all([fetchAgents(claudeBin), fetchHistory()]);
-  return mapClaudeSessions(agents.filter((agent) => agent.cwd !== usageCwd), history);
+export const fetchClaudeSessions = async (claudeBin: string): Promise<SessionRecord[]> => {
+  const [agents, history, desktop] = await Promise.all([fetchAgents(claudeBin), fetchHistory(), readClaudeDesktopSessions()]);
+  return mapClaudeSessions(agents, history, desktop);
 };
 
 const NAMED_WINDOWS: Array<['five_hour' | 'seven_day' | 'seven_day_opus' | 'seven_day_sonnet', string]> = [
@@ -134,8 +145,8 @@ export const mapClaudeUsage = (
 /**
  * Plan usage from the SDK's `/usage` call, the only way to read it from outside the app (the
  * SDK marks it experimental, so the shape may change). The process gets no prompt, so it makes
- * no model calls, saves no session and loads no settings or hooks; it runs in `cwd` so
- * `fetchClaudeSessions` can leave it off the board.
+ * no model calls, saves no session and loads no settings or hooks. Desktop-only
+ * discovery never creates a card for this internal process.
  */
 export const fetchClaudeUsage = async (claudeBin: string, cwd: string): Promise<PlanUsage> => {
   await mkdir(cwd, { recursive: true });

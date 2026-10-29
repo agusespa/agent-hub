@@ -99,7 +99,7 @@ describe('concurrent work alerts', () => {
     await mkdir(repo);
     await promisify(execFile)('git', ['init', '--initial-branch=main'], { cwd: repo });
     const records: SessionRecord[] = [
-      { id: 'claude:a', source: 'claude', title: 'Implement', cwd: repo, liveStatus: 'working' },
+      { id: 'claude:local_a', activityId: 'claude:a', aliases: ['claude:a'], source: 'claude', title: 'Implement', cwd: repo, liveStatus: 'working' },
       { id: 'codex:b', source: 'codex', title: 'Review', cwd: repo, liveStatus: 'working' },
     ];
     vi.spyOn(claudeSource, 'fetchClaudeSessions').mockImplementation(async () => [{ ...records[0] }]);
@@ -126,7 +126,7 @@ describe('concurrent work alerts', () => {
     // The desktop monitor delivers the alert without a page poll.
     await vi.advanceTimersByTimeAsync(5000);
     await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
-    expect((await read()).conflicts).toEqual([expect.objectContaining({ kind: 'worktree', sessionIds: ['claude:a', 'codex:b'], files: ['shared.ts'] })]);
+    expect((await read()).conflicts).toEqual([expect.objectContaining({ kind: 'worktree', sessionIds: ['claude:local_a', 'codex:b'], files: ['shared.ts'] })]);
     // Neither a new turn with the same overlap nor answering a permission prompt repeats it.
     await write('claude-turn', { id: 'claude:a', at: at + 1, files: [], reset: true });
     expect((await read()).conflicts[0].files).toEqual([]);
@@ -388,6 +388,67 @@ describe('renaming sessions', () => {
 });
 
 describe('notes API', () => {
+  it('keeps card state and live tracking through execution changes and stale-window saves', async () => {
+    const id = 'claude:local_conversation';
+    const record: SessionRecord = {
+      id, source: 'claude', title: 'Conversation', createdAt: Date.now(), liveStatus: 'working',
+      aliases: ['claude:first'], activityId: 'claude:first',
+    };
+    vi.spyOn(claudeSource, 'fetchClaudeSessions').mockImplementation(async () => [{ ...record }]);
+    vi.spyOn(CodexAppServer.prototype, 'listThreads').mockResolvedValue([]);
+    vi.spyOn(claudeSource, 'fetchClaudeUsage').mockResolvedValue({ source: 'claude', plan: null, windows: [], fetchedAt: 0 });
+    vi.spyOn(CodexAppServer.prototype, 'readUsage').mockResolvedValue({ source: 'codex', plan: null, windows: [], fetchedAt: 0 });
+    await writeFile(path.join(dataDir, 'placements.json'), JSON.stringify({ placements: { 'claude:first': 'done' } }));
+    server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home') });
+    const read = async () => (await fetch(`${server!.url}/api/board`)).json();
+    const save = (endpoint: string, patch: object) => fetch(`${server!.url}/api/${endpoint}`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch),
+    });
+    expect((await read()).cards).toEqual([expect.objectContaining({ id, column: 'done', liveStatus: 'working' })]);
+    await save('notes', { id, text: 'Permanent note' });
+    await save('ticket', { id, key: 'PROJ-9' });
+    // Desktop resumes the same conversation with a new CLI execution.
+    record.activityId = 'claude:second';
+    record.aliases = ['claude:second', 'claude:first'];
+    const at = Date.now();
+    await writeFile(path.join(dataDir, 'live-status', 'claude-first.json'), JSON.stringify({ id: 'claude:first', status: 'idle', at }));
+    expect((await read()).cards).toEqual([expect.objectContaining({ id, column: 'done', notes: 'Permanent note', ticket: 'PROJ-9', liveStatus: 'working' })]);
+    await writeFile(path.join(dataDir, 'live-status', 'claude-second.json'), JSON.stringify({ id: 'claude:second', status: 'waiting', at }));
+    expect((await read()).cards[0]).toMatchObject({ id, liveStatus: 'waiting', column: 'done' });
+    // A save carrying a pre-migration ID resolves to the same permanent card.
+    await save('notes', { id: 'claude:first', text: 'Updated note' });
+    expect(JSON.parse(await readFile(path.join(dataDir, 'notes.json'), 'utf8')).cards).toEqual({ [id]: 'Updated note' });
+    expect((await read()).cards[0]).toMatchObject({ id, notes: 'Updated note' });
+  });
+
+  it('keeps saved state after a Claude CLI ID change and lets inherited values be cleared', async () => {
+    vi.spyOn(claudeSource, 'fetchClaudeSessions').mockResolvedValue([
+      { id: 'claude:local_conversation', aliases: ['claude:current', 'claude:second', 'claude:first'], activityId: 'claude:current', source: 'claude', title: 'Conversation', createdAt: 0, liveStatus: null },
+    ]);
+    vi.spyOn(CodexAppServer.prototype, 'listThreads').mockResolvedValue([]);
+    vi.spyOn(claudeSource, 'fetchClaudeUsage').mockResolvedValue({ source: 'claude', plan: null, windows: [], fetchedAt: 0 });
+    vi.spyOn(CodexAppServer.prototype, 'readUsage').mockResolvedValue({ source: 'codex', plan: null, windows: [], fetchedAt: 0 });
+    await writeFile(path.join(dataDir, 'placements.json'), JSON.stringify({ placements: { 'claude:first': 'standby' }, order: { standby: ['claude:first'] } }));
+    await writeFile(path.join(dataDir, 'tickets.json'), JSON.stringify({ cards: { 'claude:second': 'PROJ-7' } }));
+    await writeFile(path.join(dataDir, 'notes.json'), JSON.stringify({ cards: { 'claude:first': 'Keep this note' } }));
+    await writeFile(path.join(dataDir, 'last-prompts.json'), JSON.stringify({ cards: { 'claude:first': Date.now() } }));
+    const start = () => startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home') });
+    server = await start();
+    const read = async () => (await fetch(`${server!.url}/api/board`)).json();
+    expect((await read()).cards).toEqual([expect.objectContaining({
+      id: 'claude:local_conversation', column: 'standby', ticket: 'PROJ-7', notes: 'Keep this note', lastPromptAt: expect.any(Number),
+    })]);
+    for (const [endpoint, patch] of [['ticket', { key: null }], ['notes', { text: '' }]] as const) {
+      const response = await fetch(`${server.url}/api/${endpoint}`, {
+        method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'claude:local_conversation', ...patch }),
+      });
+      expect(response.status).toBe(200);
+    }
+    server.close();
+    server = await start();
+    expect((await read()).cards).toEqual([expect.objectContaining({ id: 'claude:local_conversation', ticket: null, notes: '', column: 'standby' })]);
+  });
+
   it('persists notes through server restarts and retains annotated old cards', async () => {
     vi.spyOn(claudeSource, 'fetchClaudeSessions').mockResolvedValue([
       { id: 'claude:a', source: 'claude', title: 'Old session', createdAt: 0, liveStatus: null },

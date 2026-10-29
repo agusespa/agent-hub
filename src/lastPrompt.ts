@@ -21,12 +21,21 @@ export class LastPromptStore {
     private readonly file: string,
   ) {}
 
-  async read(now = Date.now()): Promise<Map<string, number>> {
-    const fromHooks = await this.readHookFiles();
-    const saved = await this.readSaved();
-    if (fromHooks.some(({ id, at }) => at > (saved.get(id) ?? 0))) {
+  async read(now = Date.now(), aliases: ReadonlyMap<string, string> = new Map()): Promise<Map<string, number>> {
+    const fromHooks = (await this.readHookFiles()).map((event) => ({ ...event, id: aliases.get(event.id) ?? event.id }));
+    const original = await this.readSaved();
+    const canonicalize = (values: Map<string, number>) => {
+      const canonical = new Map<string, number>();
+      for (const [id, at] of values) {
+        const key = aliases.get(id) ?? id;
+        canonical.set(key, Math.max(canonical.get(key) ?? 0, at));
+      }
+      return canonical;
+    };
+    const saved = canonicalize(original);
+    if ([...original.keys()].some((id) => aliases.has(id)) || fromHooks.some(({ id, at }) => at > (saved.get(id) ?? 0))) {
       await updateJsonFile(this.file, async () => {
-        const current = await this.readSaved();
+        const current = canonicalize(await this.readSaved());
         for (const { id, at } of fromHooks) if (at > (current.get(id) ?? 0)) current.set(id, at);
         return { cards: Object.fromEntries(current) };
       });

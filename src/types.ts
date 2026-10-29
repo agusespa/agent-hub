@@ -30,6 +30,10 @@ export const isColumnId = (value: unknown): value is ColumnId =>
 export interface SessionRecord {
   /** Board-wide unique id, prefixed with the source. */
   id: string;
+  /** Execution IDs belonging to this conversation, current first, for state migration. */
+  aliases?: string[];
+  /** Current execution's source-prefixed ID, used for hooks and file activity. */
+  activityId?: string;
   source: Source;
   title: string;
   /** The source's real session id for renaming; absent where the source cannot rename it. */

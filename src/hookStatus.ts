@@ -104,17 +104,18 @@ export class HookStatusMerge {
 
   apply(records: SessionRecord[], statuses: ReadonlyMap<string, HookStatus>, now = Date.now()): SessionRecord[] {
     return records.map((record) => {
-      const hook = statuses.get(record.id);
+      const activityId = record.activityId ?? record.id;
+      const hook = statuses.get(activityId);
       if (!hook) return record;
       if (record.source === 'codex') {
         return hook.status && now - hook.at <= CODEX_HOLD_MS[hook.status] ? { ...record, liveStatus: hook.status } : record;
       }
       if (now - hook.at > CLAUDE_HOLD_MS) {
-        this.polledAtEvent.delete(record.id);
+        this.polledAtEvent.delete(activityId);
         return record;
       }
-      let seen = this.polledAtEvent.get(record.id);
-      if (seen?.at !== hook.at) this.polledAtEvent.set(record.id, (seen = { at: hook.at, polled: record.liveStatus, caughtUp: false }));
+      let seen = this.polledAtEvent.get(activityId);
+      if (seen?.at !== hook.at) this.polledAtEvent.set(activityId, (seen = { at: hook.at, polled: record.liveStatus, caughtUp: false }));
       if (record.liveStatus !== seen.polled) seen.caughtUp = true;
       if (seen.caughtUp || record.liveStatus === hook.status) return record;
       return { ...record, liveStatus: hook.status, waitingFor: undefined };

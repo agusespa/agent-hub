@@ -1,11 +1,12 @@
 # Agent Hub
 
-A local macOS app for keeping track of Claude Code and Codex sessions in one kanban board.
+A local macOS app for keeping track of conversations from Claude Desktop and the Codex desktop app in one kanban board. Terminal-only sessions, IDE sessions and background agents are excluded.
 
 ## Features
 
 - Kanban columns **Parked**, **Stand-by**, **Doing** and **Done**; sessions move to Doing when they start working. Switch **View** to **Project** for one lane per project instead.
 - Working, waiting and idle status, with filters by project, source and ticket.
+- One card per desktop conversation. Claude cards use the permanent Desktop conversation ID, so resuming or rewinding keeps their identity, placement, tickets and notes.
 - Tickets and notes per session, and Codex titles editable from the board.
 - Open sessions in Codex and project folders in VS Code.
 - Plan usage and reset times, with alerts for low capacity and unused weekly capacity, an alert level and quiet hours.
@@ -16,7 +17,7 @@ A local macOS app for keeping track of Claude Code and Codex sessions in one kan
 
 Requires macOS, Node.js 22 or later, and Git. Install and sign in to the sources you use:
 
-- **Claude Code:** the `claude` command must be available on your shell's `PATH`.
+- **Claude Desktop:** install the desktop app. The `claude` command must also be available on your shell's `PATH` for internal status and plan-usage reads. Terminal sessions are never added to the board.
 - **Codex:** install the desktop app at `/Applications/Codex.app`; Agent Hub uses its bundled CLI.
 - **VS Code** is optional, for opening project folders.
 
@@ -46,6 +47,6 @@ Notifications need a signed build and macOS permission:
 
 This adds Agent Hub hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`. Trust new Codex hooks with `/hooks` in the Codex CLI; existing sessions may need a restart. Turning it off removes only Agent Hub's hooks. Hooks save session IDs, status, last-prompt times and edited file paths.
 
-Filters, sorting, the view and theme, card positions, tickets, and notes save automatically in `~/Library/Application Support/Agent Hub/`. Agent Hub does not display or store prompt or transcript text.
+Filters, sorting, the view and theme, card positions, tickets, and notes save automatically in `~/Library/Application Support/Agent Hub/`. Existing Claude card state migrates automatically from CLI session IDs to permanent Desktop conversation IDs. Agent Hub does not display or store prompt or transcript text.
 
 Sessions leave the board after 45 days without a prompt (or since session start if none was recorded), unless running, moved out of Parked, or given a ticket or notes. **Settings → Keep idle sessions** changes this to 2 weeks or 90 days. Sessions started in your home folder are not shown, as they belong to no project.

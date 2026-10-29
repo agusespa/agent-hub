@@ -3,7 +3,7 @@
   "productName": "Agent Hub",
   "version": "0.1.0",
   "private": true,
-  "description": "Local kanban board of Claude Code and Codex sessions",
+  "description": "Local kanban board of Claude Desktop and Codex desktop conversations",
   "type": "module",
   "main": "dist/desktop/main.js",
   "scripts": {

@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { cardsStartedWorking, DAY_MS, isOnBoard, orderCards, toCard } from './board.js';
+import { migrateBoardState, sessionAliases } from './sessionIdentity.js';
 import { PROJECT_ROOT } from './app.js';
 import { configFiles, configFolders } from './configFiles.js';
 import { ConflictAlerts, readWorktree, sessionConflicts, type SessionConflict } from './conflicts.js';
@@ -225,15 +226,15 @@ export const startBoardServer = async ({
 
   const buildBoard = async (): Promise<Board> => {
     const errors: string[] = [];
-    const [claude, codexThreads, placed, keys, hooked, prompted, savedNotes, savedView] = await Promise.all([
-      settle('claude', fetchClaudeSessions(claudeBin, claudeUsageCwd), errors, missing),
+    const [claude, codexThreads, hooked, savedView] = await Promise.all([
+      settle('claude', fetchClaudeSessions(claudeBin), errors, missing),
       settle('codex', codex.listThreads(), errors, missing),
-      placements.read(),
-      tickets.read(),
       hookStatuses.read(),
-      lastPrompts.read(),
-      notes.read(),
       view.read(),
+    ]);
+    await migrateBoardState(dataDir, claude);
+    const [placed, keys, prompted, savedNotes] = await Promise.all([
+      placements.read(), tickets.read(), lastPrompts.read(Date.now(), sessionAliases(claude)), notes.read(),
     ]);
     if (missing.size === Object.keys(SOURCE_NAMES).length) {
       errors.push(`Neither Claude Code nor Codex was found: no \`${claudeBin}\` on PATH and no ${codexBin}. Install one.`);
@@ -272,7 +273,8 @@ export const startBoardServer = async ({
       console.warn(`File activity: ${error.message}`);
       return new Map<string, string[]>();
     });
-    const conflicts = await sessionConflicts(cards, undefined, changedFiles);
+    const canonicalFiles = new Map(cards.map((card) => [card.id, changedFiles.get(card.activityId ?? card.id) ?? []]));
+    const conflicts = await sessionConflicts(cards, undefined, canonicalFiles);
     const unavailable = [...missing, ...Object.entries(SOURCE_NAMES)
       .filter(([, name]) => errors.some((error) => error.startsWith(`${name}:`)))
       .map(([source]) => source)];
@@ -312,6 +314,12 @@ export const startBoardServer = async ({
         inFlight = undefined;
       });
     return inFlight;
+  };
+
+  // Resolve old IDs from a stale window; every new write belongs to the permanent card.
+  const canonicalCardId = async (id: string): Promise<string> => {
+    const board = lastBoard ?? await getBoard();
+    return sessionAliases(board.cards).get(id) ?? id;
   };
 
   // Desktop alerts keep working when the board window is closed or in the background.
@@ -378,7 +386,9 @@ export const startBoardServer = async ({
         if (!isCardId(id) || !isColumnId(column) || !isColumnOrder(order, id)) {
           return sendJson(res, 400, { error: 'invalid placement' });
         }
-        await placements.set(id, column, order);
+        const canonical = await canonicalCardId(id);
+        const canonicalOrder = order && await Promise.all(order.map(canonicalCardId));
+        await placements.set(canonical, column, canonicalOrder);
         inFlight = undefined;
         console.log(`Moved ${id} to ${column}`);
         return sendJson(res, 200, { ok: true });
@@ -387,7 +397,7 @@ export const startBoardServer = async ({
       if (req.method === 'PUT' && url.pathname === '/api/ticket') {
         const { id, key } = await readJson(req);
         if (!isCardId(id) || !(key === null || isTicketId(key))) return sendJson(res, 400, { error: 'invalid ticket' });
-        await tickets.set(id, key);
+        await tickets.set(await canonicalCardId(id), key);
         inFlight = undefined;
         console.log(key ? `Set ${key} on ${id}` : `Removed the ticket from ${id}`);
         return sendJson(res, 200, { ok: true });
@@ -405,7 +415,7 @@ export const startBoardServer = async ({
       if (req.method === 'PUT' && url.pathname === '/api/notes') {
         const { id, text } = await readJson(req, 128 * 1024);
         if (!isCardId(id) || !isNotesText(text)) return sendJson(res, 400, { error: 'invalid notes' });
-        await notes.set(id, text);
+        await notes.set(await canonicalCardId(id), text);
         inFlight = undefined;
         return sendJson(res, 200, { ok: true });
       }

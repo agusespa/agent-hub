@@ -7,6 +7,8 @@ import type { PlanUsage, SessionRecord, UsageWindow } from '../types.js';
 /** The `thread/list` fields the board reads (https://learn.chatgpt.com/docs/app-server). `preview` is prompt text and is never read. */
 export interface CodexThread {
   id: string;
+  source?: string | Record<string, unknown>;
+  originator?: string | null;
   name?: string | null;
   cwd?: string | null;
   createdAt?: number | null;
@@ -129,12 +131,17 @@ export class CodexAppServer {
       page = (await this.request('thread/list', {
         limit: PAGE_SIZE,
         sortKey: 'updated_at',
+        archived: false,
+        sourceKinds: ['vscode', 'appServer'],
         ...(cursor ? { cursor } : {}),
       })) as ThreadListResult;
       threads.push(...page.data);
       cursor = page.nextCursor;
     } while (cursor && page.data.length > 0);
-    return threads.map(mapCodexThread);
+    // The local app-server cannot filter by originator. Both Desktop and the IDE
+    // extension use "vscode", so that source alone is not sufficient.
+    return threads.filter((thread) => thread.originator === 'Codex Desktop' &&
+      (thread.source === 'vscode' || thread.source === 'appServer')).map(mapCodexThread);
   }
 
   async readUsage(): Promise<PlanUsage> {

@@ -53,6 +53,15 @@ describe('HookStatusMerge', () => {
     const records = [record('claude:a', 'working'), record('codex:b')];
     expect(new HookStatusMerge().apply(records, new Map(), now)).toEqual(records);
   });
+
+  it('follows the current execution while keeping the conversation ID stable across resumes', () => {
+    const merge = new HookStatusMerge();
+    const card = { ...record('claude:local_conversation'), activityId: 'claude:first' };
+    const hooks = statuses({ id: 'claude:first', status: 'working', at: now }, { id: 'claude:second', status: 'waiting', at: now });
+    expect(merge.apply([card], hooks, now)[0]).toMatchObject({ id: card.id, liveStatus: 'working' });
+    expect(merge.apply([{ ...card, activityId: 'claude:second' }], hooks, now)[0]).toMatchObject({ id: card.id, liveStatus: 'waiting' });
+    expect(merge.apply([{ ...card, activityId: 'claude:third' }], hooks, now)[0].liveStatus).toBeNull();
+  });
 });
 
 describe('HookStatusStore', () => {
