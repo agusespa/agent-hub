@@ -2,44 +2,31 @@
    strong colour, so it means live work; amber means a session needs you. */
 :root {
   color-scheme: light dark;
-  --bg: #f6f7f5;
-  --surface: #ffffff;
-  --column: #eceeea;
-  --border: #dcdfda;
-  --text: #0b0d10;
-  --muted: #6b7077;
-  --accent: #0b7d69;
-  --claude: #c8643b;
-  --codex: #1f6fd6;
-  --working: #0b7d69;
-  --waiting: #9a6408;
-  --idle: #a9ada6;
-  --closed: #c03a3a;
-  --danger: #c03a3a;
-  --drop: #e2f2ee;
-  --repo-text: 32%;
+  --bg: light-dark(#f6f7f5, #0a0c0f);
+  --surface: light-dark(#ffffff, #0e1115);
+  --column: light-dark(#eceeea, #161a1f);
+  --border: light-dark(#dcdfda, #1f252c);
+  --text: light-dark(#0b0d10, #e6e8eb);
+  --muted: light-dark(#6b7077, #7d8590);
+  --accent: light-dark(#0b7d69, #4de1c1);
+  --claude: light-dark(#c8643b, #e08a62);
+  --codex: light-dark(#1f6fd6, #5ea0f2);
+  --working: light-dark(#0b7d69, #4de1c1);
+  --waiting: light-dark(#9a6408, #e6a640);
+  --idle: light-dark(#a9ada6, #4a525c);
+  --closed: light-dark(#c03a3a, #f07272);
+  --danger: light-dark(#c03a3a, #f07272);
+  --drop: light-dark(#e2f2ee, #0f2420);
   --mono: ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0a0c0f;
-    --surface: #0e1115;
-    --column: #161a1f;
-    --border: #1f252c;
-    --text: #e6e8eb;
-    --muted: #7d8590;
-    --accent: #4de1c1;
-    --claude: #e08a62;
-    --codex: #5ea0f2;
-    --working: #4de1c1;
-    --waiting: #e6a640;
-    --idle: #4a525c;
-    --closed: #f07272;
-    --danger: #f07272;
-    --drop: #0f2420;
-    --repo-text: 72%;
-  }
+/* Each colour is light-dark(light, dark): it follows macOS unless the board's theme sets one. */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 * {

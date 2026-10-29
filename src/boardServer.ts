@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
-import { cardsStartedWorking, isOnBoard, orderCards, toCard } from './board.js';
+import { cardsStartedWorking, DAY_MS, isOnBoard, orderCards, toCard } from './board.js';
 import { PROJECT_ROOT } from './app.js';
 import { ConflictAlerts, sessionConflicts, type SessionConflict } from './conflicts.js';
 import { FILE_ACTIVITY_DIR, FileActivityStore } from './fileActivity.js';
@@ -15,7 +15,7 @@ import { isTicketId, TicketStore } from './ticket.js';
 import { openInApp, projectUrl, sessionUrl } from './openSession.js';
 import { PlacementStore } from './placements.js';
 import { isNotesText, NotesStore } from './notes.js';
-import { isViewPatch, ViewStore, type ViewSettings } from './view.js';
+import { isViewPatch, ViewStore, type Theme, type ViewSettings } from './view.js';
 import { CLAUDE_BIN, fetchClaudeSessions, fetchClaudeUsage } from './sources/claude.js';
 import { CODEX_BIN, CodexAppServer } from './sources/codex.js';
 import { COLUMNS, isColumnId, type Card, type LiveStatus, type PlanUsage, type SessionRecord, type Source } from './types.js';
@@ -35,6 +35,8 @@ interface Board {
   hooks: Record<Source, HookState>;
   /** When each source's hooks last reported, within the 12 hours status files are kept. */
   lastHookEvents: Partial<Record<Source, number>>;
+  /** Whether the board runs in the desktop app, which sends notifications and lets Settings test them. */
+  notifications: boolean;
   pollIntervalMs: number;
   liveReload: boolean;
   generatedAt: number;
@@ -133,6 +135,8 @@ export interface BoardServer {
  * Serves the board page and its API on 127.0.0.1. Port 0 picks a free port, which is
  * what the desktop app uses. `liveReload` reloads open pages when `public/` changes.
  * `onUsageAlert` gets each usage alert once; the desktop app shows them as notifications.
+ * `onThemeChange` gets the theme the user picks, so the desktop app can match its window.
+ * `notifications` sends a test notification and opens macOS's notification settings, for the desktop app.
  * `claudeBin`, `codexBin` and `home` (where the tools' hook configs are) are only changed by tests.
  */
 export const startBoardServer = async ({
@@ -141,6 +145,8 @@ export const startBoardServer = async ({
   liveReload = false,
   onUsageAlert,
   onConflictAlert,
+  onThemeChange,
+  notifications,
   claudeBin = CLAUDE_BIN,
   codexBin = CODEX_BIN,
   home,
@@ -150,6 +156,8 @@ export const startBoardServer = async ({
   liveReload?: boolean;
   onUsageAlert?: (alert: UsageAlert) => void;
   onConflictAlert?: (conflict: SessionConflict, cards: Card[]) => void;
+  onThemeChange?: (theme: Theme) => void;
+  notifications?: { test: () => void; openSettings: () => Promise<void> };
   claudeBin?: string;
   codexBin?: string;
   home?: string;
@@ -191,7 +199,9 @@ export const startBoardServer = async ({
     ? setInterval(() => {
         alertLog
           .take(usageAlerts(usage.get(missing)))
-          .then((alerts) => {
+          .then(async (alerts) => {
+            // Muted alerts are still logged as sent, so turning them back on does not replay old ones.
+            if (!(await view.read()).usageAlerts) return;
             for (const alert of alerts) {
               console.log(`Usage alert: ${alert.title}`);
               onUsageAlert(alert);
@@ -217,7 +227,7 @@ export const startBoardServer = async ({
       errors.push(`Neither Claude Code nor Codex was found: no \`${claudeBin}\` on PATH and no ${codexBin}. Install one.`);
     }
     const records = hookMerge.apply([...claude, ...codexThreads], hooked).filter((record) =>
-      isOnBoard(record, { placement: placed.columns.get(record.id), ticket: keys.get(record.id), notes: savedNotes.get(record.id), lastPromptAt: prompted.get(record.id) }),
+      isOnBoard(record, { placement: placed.columns.get(record.id), ticket: keys.get(record.id), notes: savedNotes.get(record.id), lastPromptAt: prompted.get(record.id) }, Date.now(), savedView.keepDays * DAY_MS),
     );
     const cards = await Promise.all(
       records.map(async (record) =>
@@ -252,7 +262,9 @@ export const startBoardServer = async ({
     const unavailable = [...missing, ...Object.entries(SOURCE_NAMES)
       .filter(([, name]) => errors.some((error) => error.startsWith(`${name}:`)))
       .map(([source]) => source)];
-    for (const conflict of conflictAlerts.take(conflicts, unavailable)) onConflictAlert?.(conflict, cards);
+    // Like usage alerts, muted ones still count as sent.
+    const newConflicts = conflictAlerts.take(conflicts, unavailable);
+    if (savedView.conflictAlerts) for (const conflict of newConflicts) onConflictAlert?.(conflict, cards);
     return {
       columns: COLUMNS,
       cards: orderCards(cards, placed.order),
@@ -263,6 +275,7 @@ export const startBoardServer = async ({
       missingSources: [...missing],
       hooks: hookState,
       lastHookEvents: lastEventBySource(hooked),
+      notifications: Boolean(notifications),
       pollIntervalMs: POLL_INTERVAL_MS,
       liveReload,
       generatedAt: Date.now(),
@@ -361,6 +374,7 @@ export const startBoardServer = async ({
         const patch = await readJson(req, 128 * 1024);
         if (!isViewPatch(patch)) return sendJson(res, 400, { error: 'invalid view settings' });
         await view.update(patch);
+        if (patch.theme) onThemeChange?.(patch.theme);
         inFlight = undefined;
         return sendJson(res, 200, { ok: true });
       }
@@ -386,6 +400,15 @@ export const startBoardServer = async ({
         inFlight = undefined;
         sendEvent('board');
         return sendJson(res, 200, { title: name });
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/notifications') {
+        const { action } = await readJson(req);
+        if (action !== 'test' && action !== 'settings') return sendJson(res, 400, { error: 'invalid notifications action' });
+        if (!notifications) return sendJson(res, 404, { error: 'Notifications are only sent by the desktop app' });
+        if (action === 'test') notifications.test();
+        else await notifications.openSettings();
+        return sendJson(res, 200, { ok: true });
       }
 
       if (req.method === 'POST' && url.pathname === '/api/open') {

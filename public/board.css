@@ -147,3 +147,86 @@
     scrollbar-gutter: auto;
   }
 }
+
+/* Project lanes: as many as there are projects, each as wide as a column, scrolling across. */
+.board.by-project {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(328px, 1fr);
+}
+
+/* A band in the project's hue, as wide as the cards below it, so the lane reads as a set. */
+.lane-title {
+  align-items: center;
+  margin: 0 16px 12px 0;
+  padding: 9px 12px 9px 10px;
+  border: 1px solid color-mix(in srgb, hsl(var(--repo-hue) 60% 50%) 25%, var(--border));
+  border-left: 3px solid hsl(var(--repo-hue) 60% 50%);
+  background: color-mix(in srgb, hsl(var(--repo-hue) 60% 50%) 8%, var(--column));
+}
+
+.lane-title .repo {
+  max-width: none;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+/* The band's edge already shows the hue. */
+.lane-title .repo::before {
+  display: none;
+}
+
+.lane-title .count {
+  margin-right: 0;
+  color: var(--text);
+}
+
+/* Which column a lane's next cards sit in, as a rule across the lane. */
+.lane-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: none;
+  margin: 6px 4px -2px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.lane-group:first-child {
+  margin-top: 0;
+}
+
+.lane-group .count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.lane-group[data-column='doing'] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.lane-group[data-column='doing'] .count {
+  color: var(--accent);
+}
+
+@media (max-width: 700px) {
+  .board.by-project {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+  }
+
+  .lane-title {
+    margin-right: 8px;
+  }
+}

@@ -16,11 +16,13 @@ interface CardContext {
   lastPromptAt?: number;
 }
 
-/** How long a session can sit unused before it drops off the board. */
-export const STALE_AFTER_MS = 45 * 24 * 60 * 60 * 1000;
+export const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** How long a session can sit unused before it drops off the board, unless Settings says otherwise. */
+export const STALE_AFTER_MS = 45 * DAY_MS;
 
 /**
- * Sessions to show: those the user sent a prompt in the last 45 days, or started then if
+ * Sessions to show: those the user sent a prompt in the last `staleAfterMs`, or started then if
  * the hooks saw no prompt, those running, and those kept by the user by moving the card
  * out of Parked, setting a ticket or adding notes. Last active only counts with neither time, as
  * it moves when Claude or Codex rewrite a session. A session with no timestamps is shown,
@@ -30,10 +32,11 @@ export const isOnBoard = (
   record: SessionRecord,
   { placement, ticket, notes, lastPromptAt }: Pick<CardContext, 'placement' | 'ticket' | 'notes' | 'lastPromptAt'>,
   now = Date.now(),
+  staleAfterMs = STALE_AFTER_MS,
 ): boolean => {
   const lastUsed = lastPromptAt ?? record.createdAt ?? record.lastActiveAt;
   const kept = (placement ?? DEFAULT_COLUMN) !== DEFAULT_COLUMN || ticket !== undefined || Boolean(notes?.trim());
-  return record.liveStatus !== null || lastUsed === undefined || now - lastUsed <= STALE_AFTER_MS || kept;
+  return record.liveStatus !== null || lastUsed === undefined || now - lastUsed <= staleAfterMs || kept;
 };
 
 /** Cards start in Parked until the user moves them or the session starts working (see `cardsStartedWorking`). */

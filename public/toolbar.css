@@ -220,7 +220,7 @@
 
 /* As tall as the filters: their 14px text's line, with this smaller text centred in it. */
 .usage summary,
-.hooks summary {
+.settings summary {
   line-height: calc(14px * 1.4);
 }
 
@@ -368,35 +368,151 @@
   opacity: 0.5;
 }
 
-.hooks {
-  font-family: var(--mono);
-  font-size: 11px;
+/* An icon of slider controls; a mask, so it takes the text colour. */
+.settings-icon {
+  display: block;
+  width: 14px;
+  height: calc(14px * 1.4);
+  background-color: var(--muted);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M2 4h12M2 8h12M2 12h12'/%3E%3Ccircle cx='5' cy='4' r='1.6' fill='white'/%3E%3Ccircle cx='11' cy='8' r='1.6' fill='white'/%3E%3Ccircle cx='7' cy='12' r='1.6' fill='white'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* The icon alone says it opens a menu. */
+.settings summary {
+  padding: 1px 4px;
+}
+
+.settings summary::after {
+  display: none;
+}
+
+.settings summary:hover .settings-icon,
+.settings[open] .settings-icon {
+  background-color: var(--text);
 }
 
 /* The open panels read as prose, so they go back to the body font. */
 .usage-panel,
-.hooks-panel {
+.settings-panel {
   font-family: system-ui, -apple-system, sans-serif;
   font-size: 12px;
 }
 
 /* Opens under its summary, lined up with its right edge like the usage panel. */
-.hooks-panel {
+.settings-panel {
   right: 0;
   left: auto;
+  width: 300px;
+  max-height: calc(100vh - 72px);
+  padding: 0;
+}
+
+.settings-section {
+  padding: 10px 12px;
+}
+
+.settings-section + .settings-section {
+  border-top: 1px solid var(--border);
+}
+
+/* Section names read like the toolbar's labels. */
+.settings-section h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-section .multi-select-option {
+  margin: 0 -6px;
+  font-size: 14px;
+}
+
+.settings-section > .usage-note {
+  margin: 6px 0 0;
+}
+
+.settings-section > .usage-note:empty {
+  display: none;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* An on/off switch: a track that fills with the accent, and a knob that slides across. */
+.switch {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 24px;
+  height: 14px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--column);
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.switch::before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 0.15s, background-color 0.15s;
+}
+
+.switch:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.switch:checked::before {
+  background: var(--surface);
+  transform: translateX(10px);
+}
+
+.switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.hooks-value {
+  margin-left: 8px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Lines closer to each other than to the heading, so they read as one block under it. */
+.hooks-panel {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
-  width: 300px;
-  padding: 10px 12px;
+  gap: 4px;
 }
 
 .hooks-panel p {
   margin: 0;
 }
 
-.hooks-button {
+.settings-button {
   padding: 2px 10px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -405,7 +521,7 @@
   cursor: pointer;
 }
 
-.hooks-button:disabled {
+.settings-button:disabled {
   color: var(--muted);
   cursor: default;
 }

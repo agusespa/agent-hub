@@ -150,6 +150,57 @@ describe('concurrent work alerts', () => {
     expect((await read()).conflicts).toEqual([expect.objectContaining({ kind: 'worktree', files: [] })]);
     expect(notify).toHaveBeenCalledTimes(2);
   });
+
+  it('keeps the board warning but sends no alert while alerts are off, and does not replay it when turned on', async () => {
+    const repo = path.join(dataDir, 'repo');
+    await mkdir(repo);
+    await promisify(execFile)('git', ['init', '--initial-branch=main'], { cwd: repo });
+    const records: SessionRecord[] = [
+      { id: 'claude:a', source: 'claude', title: 'Implement', cwd: repo, liveStatus: 'working' },
+      { id: 'codex:b', source: 'codex', title: 'Review', cwd: repo, liveStatus: 'working' },
+    ];
+    vi.spyOn(claudeSource, 'fetchClaudeSessions').mockImplementation(async () => [{ ...records[0] }]);
+    vi.spyOn(CodexAppServer.prototype, 'listThreads').mockImplementation(async () => [{ ...records[1] }]);
+    vi.spyOn(claudeSource, 'fetchClaudeUsage').mockResolvedValue({ source: 'claude', plan: null, windows: [], fetchedAt: 0 });
+    vi.spyOn(CodexAppServer.prototype, 'readUsage').mockResolvedValue({ source: 'codex', plan: null, windows: [], fetchedAt: 0 });
+    await writeFile(path.join(dataDir, 'view.json'), JSON.stringify({ conflictAlerts: false }));
+    const notify = vi.fn();
+    server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home'), onConflictAlert: notify });
+    const activity = path.join(dataDir, 'file-activity');
+    await mkdir(activity);
+    const shared = path.join(repo, 'shared.ts');
+    for (const id of ['claude:a', 'codex:b']) {
+      await writeFile(path.join(activity, `${id.replace(':', '-')}.json`), JSON.stringify({ id, at: Date.now(), files: [shared] }));
+    }
+    const read = async () => (await fetch(`${server!.url}/api/board`)).json();
+    expect((await read()).conflicts[0].files).toEqual(['shared.ts']);
+    await fetch(`${server.url}/api/view`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ conflictAlerts: true }),
+    });
+    expect((await read()).conflicts[0].files).toEqual(['shared.ts']);
+    expect(notify).not.toHaveBeenCalled();
+  });
+});
+
+describe('notifications API', () => {
+  const post = (action: unknown) => fetch(`${server!.url}/api/notifications`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action }),
+  });
+
+  it('tests notifications and opens their settings only in the desktop app', async () => {
+    const notifications = { test: vi.fn(), openSettings: vi.fn().mockResolvedValue(undefined) };
+    server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home'), notifications });
+    expect((await (await fetch(`${server.url}/api/board`)).json()).notifications).toBe(true);
+    expect((await post('test')).status).toBe(200);
+    expect((await post('settings')).status).toBe(200);
+    expect((await post('other')).status).toBe(400);
+    expect(notifications.test).toHaveBeenCalledTimes(1);
+    expect(notifications.openSettings).toHaveBeenCalledTimes(1);
+    server.close();
+    server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home') });
+    expect((await (await fetch(`${server.url}/api/board`)).json()).notifications).toBe(false);
+    expect((await post('test')).status).toBe(404);
+  });
 });
 
 describe('opening projects', () => {
@@ -260,9 +311,10 @@ describe('notes API', () => {
 });
 
 describe('view preferences API', () => {
-  it('reads local defaults and preserves filters and sorting across restarts', async () => {
+  it('reads local defaults and preserves filters, sorting and layout across restarts', async () => {
+    const themes: string[] = [];
     const start = () => startBoardServer({
-      dataDir, port: 0, home: path.join(dataDir, 'home'),
+      dataDir, port: 0, home: path.join(dataDir, 'home'), onThemeChange: (theme) => themes.push(theme),
       claudeBin: path.join(dataDir, 'no-claude'), codexBin: path.join(dataDir, 'no-codex'),
     });
     server = await start();
@@ -270,15 +322,20 @@ describe('view preferences API', () => {
     const save = (patch: object) => fetch(`${server!.url}/api/view`, {
       method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch),
     });
-    expect(await read()).toEqual({ hiddenRepos: [], hiddenSources: [], hiddenTickets: [], oldestFirst: [] });
+    expect(await read()).toEqual({ hiddenRepos: [], hiddenSources: [], hiddenTickets: [], oldestFirst: [], layout: 'kanban', theme: 'system', usageAlerts: true, conflictAlerts: true, keepDays: 45 });
     expect((await save({ hiddenRepos: ['project'], hiddenTickets: ['PROJ-1'] })).status).toBe(200);
     expect((await save({ oldestFirst: ['parked'] })).status).toBe(200);
+    expect((await save({ layout: 'project' })).status).toBe(200);
+    expect((await save({ theme: 'dark' })).status).toBe(200);
+    expect(themes).toEqual(['dark']);
     const saved = JSON.parse(await readFile(path.join(dataDir, 'view.json'), 'utf8'));
     server.close();
     server = await start();
     expect(await read()).toEqual(saved);
     expect(saved.hiddenRepos).toEqual(['project']);
     expect(saved.oldestFirst).toEqual(['parked']);
+    expect(saved.layout).toBe('project');
+    expect(saved.theme).toBe('dark');
     expect((await save({ hiddenSources: 'claude' })).status).toBe(400);
     expect((await save({ arbitrary: [] })).status).toBe(400);
     expect(await read()).toEqual(saved);

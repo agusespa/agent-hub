@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardsStartedWorking, isOnBoard, orderCards, STALE_AFTER_MS, toCard } from './board.js';
+import { cardsStartedWorking, DAY_MS, isOnBoard, orderCards, STALE_AFTER_MS, toCard } from './board.js';
 import type { Card, ColumnId, LiveStatus, SessionRecord } from './types.js';
 
 const record: SessionRecord = {
@@ -26,6 +26,12 @@ describe('isOnBoard', () => {
   it('hides idle sessions started or prompted longer ago, however recently last active', () => {
     expect(isOnBoard({ ...idle, createdAt: now - STALE_AFTER_MS - 1, lastActiveAt: now }, nothingKept, now)).toBe(false);
     expect(isOnBoard({ ...idle, createdAt: 0, lastActiveAt: now }, { placement: undefined, lastPromptAt: 1 }, now)).toBe(false);
+  });
+
+  it('uses the number of days set in Settings', () => {
+    const twoWeeks = 14 * DAY_MS;
+    expect(isOnBoard({ ...idle, createdAt: now - twoWeeks }, nothingKept, now, twoWeeks)).toBe(true);
+    expect(isOnBoard({ ...idle, createdAt: now - twoWeeks - 1 }, nothingKept, now, twoWeeks)).toBe(false);
   });
 
   it('shows old sessions that are running', () => {

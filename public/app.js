@@ -27,10 +27,14 @@ let savingTitle = null;
 const NO_TICKET = 'none';
 
 /**
- * The repos, sources and tickets unticked in the filters, so new ones show, and the
- * last-active columns flipped to oldest first.
+ * The repos, sources and tickets unticked in the filters, so new ones show, the
+ * last-active columns flipped to oldest first, whether the board shows its kanban
+ * columns or one lane per project, and the settings menu's choices.
  */
-const view = { hiddenRepos: [], hiddenSources: [], hiddenTickets: [], oldestFirst: [] };
+const view = {
+  hiddenRepos: [], hiddenSources: [], hiddenTickets: [], oldestFirst: [], layout: 'kanban',
+  theme: 'system', usageAlerts: true, conflictAlerts: true, keepDays: 45,
+};
 let viewLoaded = false;
 let pendingView = {};
 let savingView = null;
@@ -58,7 +62,7 @@ const flushView = () => {
 };
 
 const saveView = (key) => {
-  pendingView[key] = [...view[key]];
+  pendingView[key] = Array.isArray(view[key]) ? [...view[key]] : view[key];
   void flushView();
 };
 
@@ -148,7 +152,7 @@ const renderFilters = () => {
   const repos = unique([...board.cards.map((card) => card.repo), ...view.hiddenRepos]);
   repoHues = new Map(repos.map((repo, index) => [repo, String(Math.round((150 + index * 137.5) % 360))]));
   // Repo hues follow the options, so the list is rebuilt whenever they change.
-  fillMultiSelect($('#filter-repo'), repos.map((repo) => [repo, repo]), view.hiddenRepos, 'repos', (repo) => repoHues.get(repo));
+  fillMultiSelect($('#filter-repo'), repos.map((repo) => [repo, repo]), view.hiddenRepos, 'projects', (repo) => repoHues.get(repo));
   // A source that is not installed has no cards, so it says why instead of showing an error.
   const sources = Object.entries(SOURCE_LABELS).map(([source, label]) => [
     source,
@@ -465,7 +469,9 @@ window.addEventListener('pagehide', () => {
 
 const renderCard = (card) => {
   const node = el('article', `card source-${card.source}`);
-  node.draggable = true;
+  // Project lanes come from the sessions' folders, so there is nowhere to drag a card to.
+  const byProject = view.layout === 'project';
+  node.draggable = !byProject;
   node.dataset.id = card.id;
   let dragged = false;
   node.addEventListener('pointerdown', () => { dragged = false; });
@@ -491,11 +497,14 @@ const renderCard = (card) => {
   });
 
   // Where first, so cards from the same repo match at a glance; then what, then its state.
+  // A project lane names the project once in its header instead.
   const top = el('div', 'card-top');
-  const repo = el('span', 'repo', card.repo);
-  repo.style.setProperty('--repo-hue', repoHues.get(card.repo) ?? '0');
-  repo.title = card.repo;
-  top.append(repo);
+  if (!byProject) {
+    const repo = el('span', 'repo', card.repo);
+    repo.style.setProperty('--repo-hue', repoHues.get(card.repo) ?? '0');
+    repo.title = card.repo;
+    top.append(repo);
+  }
   if (card.branch) {
     const branch = el('span', 'branch', card.branch);
     branch.title = card.branch;
@@ -547,7 +556,7 @@ const renderCard = (card) => {
       const description = el('p', '', `${conflict.kind === 'worktree' ? 'Same worktree' : `Same branch (${conflict.branch})`}: ${other ? `${SOURCE_LABELS[other.source]} · ${other.title}` : 'another working session'}`);
       description.append(el('span', 'conflict-location', conflict.location));
       if (conflict.files.length > 0) description.append(el('span', 'conflict-location', `Observed edits to the same files:\n${conflict.files.join('\n')}`));
-      else description.append(el('span', 'conflict-note', 'No edits to the same files so far. You get an alert if that changes.'));
+      else description.append(el('span', 'conflict-note', `No edits to the same files so far.${board.notifications && view.conflictAlerts ? ' You get an alert if that changes.' : ''}`));
       if (other?.openId) {
         const open = el('button', 'link-button', `Open in ${SOURCE_LABELS[other.source]} ↗`);
         open.type = 'button';
@@ -742,11 +751,11 @@ const HOOK_CONFIGS = { claude: '~/.claude/settings.json', codex: '~/.codex/hooks
 let hooksDrawn = null;
 let hooksSaving = false;
 
-/** The live status menu: whether the board's hooks are on, and the button that turns them on or off. */
+/** Live status in the settings menu: whether the board's hooks are on, with the switch that turns them on or off. */
 const renderHooks = () => {
-  const picker = $('#hooks');
+  const section = $('#hooks');
   const sources = Object.keys(SOURCE_LABELS).filter((source) => (board.hooks?.[source] ?? 'unavailable') !== 'unavailable');
-  picker.hidden = !sources.length;
+  section.hidden = !sources.length;
   const on = sources.filter((source) => board.hooks[source] === 'on');
   // Whether events arrive says more than the configs do: Codex skips hooks it has not been told to trust.
   const events = on.map((source) => {
@@ -759,23 +768,20 @@ const renderHooks = () => {
   if (!sources.length || drawn === hooksDrawn) return;
   hooksDrawn = drawn;
   const allOn = on.length === sources.length;
-  picker.querySelector('.hooks-value').textContent = allOn ? 'Live status on' : on.length ? 'Live status partly on' : 'Live status off';
-  const names = (list) => list.map((source) => SOURCE_LABELS[source]).join(' and ');
+  // Partly on reads as off: switching it on adds the hooks to the tool that lacks them.
+  const toggle = $('#hooks-toggle');
+  Object.assign(toggle, { checked: allOn, disabled: hooksSaving });
+  toggle.title = allOn ? "Turning off removes only the board's hooks" : '';
+  section.querySelector('.hooks-value').textContent = hooksSaving ? 'Saving…' : on.length && !allOn ? `Only ${SOURCE_LABELS[on[0]]}` : '';
+  // When on, the switch says so; the event lines show whether they work and how to fix them if not.
   const lines = allOn
-    ? [
-        el('p', '', `On for ${names(on)}. New sessions use the hooks; running ones may need a restart.`),
-        ...events,
-      ]
+    ? events
     : [
         el('p', '', 'Hooks tell the board as soon as a session starts working, needs you or stops, and give Codex sessions a status, which the board cannot read otherwise.'),
         el('p', 'usage-note', `Adds the board's hooks to ${sources.map((source) => HOOK_CONFIGS[source]).join(' and ')}. They pass on only the session id: prompts, tool details and transcripts are not read.`),
         ...events,
       ];
-  const button = el('button', 'hooks-button', hooksSaving ? 'Saving…' : allOn ? 'Turn off' : 'Turn on');
-  Object.assign(button, { type: 'button', disabled: hooksSaving });
-  if (allOn) button.title = "Removes only the board's hooks";
-  button.addEventListener('click', () => setHooks(!allOn));
-  picker.querySelector('.hooks-panel').replaceChildren(...lines, button);
+  section.querySelector('.hooks-panel').replaceChildren(...lines);
 };
 
 const setHooks = async (on) => {
@@ -800,6 +806,7 @@ const cardBelow = (list, y) =>
 const renderColumn = (column, cards) => {
   const section = el('section', 'column');
   section.dataset.column = column.id;
+  section.dataset.key = column.id;
   const header = el('h2', 'column-title', column.title);
   header.append(el('span', 'count', String(cards.length)));
   if (column.manualOrder) {
@@ -825,6 +832,53 @@ const renderColumn = (column, cards) => {
   else list.append(el('p', 'empty', 'Nothing here'));
   section.append(header, list);
   return section;
+};
+
+/**
+ * A project's lane: its cards grouped under the board's columns, Doing first and Done last,
+ * each in the order its column shows them in. Columns without cards are left out.
+ */
+const renderLane = (repo, groups) => {
+  const section = el('section', 'column lane');
+  section.dataset.key = `repo:${repo}`;
+  const header = el('h2', 'column-title lane-title');
+  // The header takes the hue too, for its tinted band.
+  header.style.setProperty('--repo-hue', repoHues.get(repo) ?? '0');
+  const name = el('span', 'repo', repo);
+  name.title = repo;
+  header.append(name, el('span', 'count', String(groups.reduce((sum, { cards }) => sum + cards.length, 0))));
+  const list = el('div', 'cards');
+  for (const { column, cards } of groups) {
+    const heading = el('h3', 'lane-group', column.title);
+    heading.dataset.column = column.id;
+    heading.append(el('span', 'count', String(cards.length)));
+    list.append(heading, ...cards.map(renderCard));
+  }
+  section.append(header, list);
+  return section;
+};
+
+const LANE_COLUMN_ORDER = ['doing', 'standby', 'parked', 'done'];
+
+/** Projects with the most recent prompt first, so the lanes you work in sit at the left. */
+const renderLanes = (visible, cardsIn) => {
+  const latest = new Map();
+  for (const card of visible) {
+    latest.set(card.repo, Math.max(latest.get(card.repo) ?? 0, cardTime(card).at ?? 0));
+  }
+  const repos = [...latest.keys()].sort((a, b) => latest.get(b) - latest.get(a) || a.localeCompare(b));
+  if (!repos.length) {
+    const section = el('section', 'column lane');
+    section.dataset.key = 'empty';
+    const list = el('div', 'cards');
+    list.append(el('p', 'empty', 'Nothing here'));
+    section.append(el('h2', 'column-title', 'Projects'), list);
+    return [section];
+  }
+  const columns = LANE_COLUMN_ORDER.map((id) => board.columns.find((column) => column.id === id)).filter(Boolean);
+  return repos.map((repo) => renderLane(repo, columns
+    .map((column) => ({ column, cards: cardsIn(column).filter((card) => card.repo === repo) }))
+    .filter(({ cards }) => cards.length)));
 };
 
 /**
@@ -899,7 +953,8 @@ const updateColumns = (sections) => {
   const focusSelector = ['.card-title-button', '.open-session', '.open-project']
     .find((selector) => focused?.matches(selector));
   const current = [...$('#board').children];
-  if (current.length !== sections.length || sections.some((section, i) => section.dataset.column !== current[i].dataset.column)) {
+  $('#board').classList.toggle('by-project', view.layout === 'project');
+  if (current.length !== sections.length || sections.some((section, i) => section.dataset.key !== current[i].dataset.key)) {
     $('#board').replaceChildren(...sections);
     return;
   }
@@ -918,9 +973,24 @@ const updateColumns = (sections) => {
   }
 };
 
+/**
+ * The settings menu's choices. "Match macOS" leaves the page to the system's colours; light or
+ * dark sets them (see base.css). Only the desktop app sends notifications, so only it shows them.
+ */
+const renderSettings = () => {
+  if (view.theme === 'system') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = view.theme;
+  for (const option of document.querySelectorAll('#theme input')) option.checked = option.value === view.theme;
+  $('#notifications').hidden = !board.notifications;
+  $('#usage-alerts').checked = view.usageAlerts;
+  $('#conflict-alerts').checked = view.conflictAlerts;
+  for (const option of document.querySelectorAll('#keep-days input')) option.checked = Number(option.value) === view.keepDays;
+};
+
 /** Holds still while a card is dragged; details keep their editor mounted separately. */
 const render = () => {
   if (!board || dragging) return;
+  renderSettings();
   renderFilters();
   renderUsage();
   renderHooks();
@@ -935,7 +1005,11 @@ const render = () => {
     cards.sort(byNewest);
     return view.oldestFirst.includes(column.id) ? cards.reverse() : cards;
   };
-  updateColumns(board.columns.map((column) => renderColumn(column, cardsIn(column))));
+  updateColumns(view.layout === 'project' ? renderLanes(visible, cardsIn) : board.columns.map((column) => renderColumn(column, cardsIn(column))));
+  for (const option of document.querySelectorAll('#layout input')) {
+    option.checked = option.value === view.layout;
+    if (option.checked) $('#layout .multi-select-value').textContent = option.parentNode.textContent;
+  }
   renderErrors();
   renderDetails();
 };
@@ -973,7 +1047,7 @@ const poll = async () => {
     if (!response.ok) throw new Error(`Board request failed (${response.status})`);
     board = await response.json();
     if (!viewLoaded) {
-      for (const key of Object.keys(view)) view[key] = board.view?.[key] ?? [];
+      for (const key of Object.keys(view)) if (board.view?.[key] !== undefined) view[key] = board.view[key];
       viewLoaded = true;
     }
     loadError = null;
@@ -1076,6 +1150,46 @@ for (const [selector, key] of [['#filter-repo', 'hiddenRepos'], ['#filter-source
   });
   picker.querySelector('.multi-select-clear').addEventListener('click', () => hide([]));
 }
+// The settings menu stays open, so the new theme shows beside the other settings.
+$('#theme').addEventListener('change', (event) => {
+  view.theme = event.target.value;
+  saveView('theme');
+  render();
+});
+for (const [selector, key] of [['#usage-alerts', 'usageAlerts'], ['#conflict-alerts', 'conflictAlerts']]) {
+  $(selector).addEventListener('change', (event) => {
+    view[key] = event.target.checked;
+    saveView(key);
+    render();
+  });
+}
+// The server decides which sessions are on the board, so the board reloads once this is saved.
+$('#keep-days').addEventListener('change', async (event) => {
+  view.keepDays = Number(event.target.value);
+  saveView('keepDays');
+  if (await flushView()) await poll();
+});
+const notificationAction = async (action, done) => {
+  const status = $('#notifications-status');
+  try {
+    await send('POST', '/api/notifications', { action });
+    status.textContent = done;
+  } catch (error) {
+    status.textContent = '';
+    showError(`Notifications: ${error.message}`);
+  }
+};
+$('#notifications-test').addEventListener('click', () =>
+  notificationAction('test', 'Sent. If it did not show, allow Agent Hub in macOS settings.'));
+$('#notifications-settings').addEventListener('click', () => notificationAction('settings', ''));
+$('#hooks-toggle').addEventListener('change', (event) => setHooks(event.target.checked));
+// Only one view applies, so choosing it closes the menu.
+$('#layout').addEventListener('change', (event) => {
+  view.layout = event.target.value;
+  $('#layout').open = false;
+  saveView('layout');
+  render();
+});
 // The filters and the usage panel close like a select: on Escape, or a click elsewhere.
 for (const picker of document.querySelectorAll('.multi-select')) {
   picker.addEventListener('keydown', (event) => {

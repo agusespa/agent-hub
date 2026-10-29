@@ -4,6 +4,7 @@ import { app, BrowserWindow, dialog, nativeTheme, session, shell } from 'electro
 import { startBoardServer } from '../boardServer.js';
 import type { UsageAlert } from '../usageAlerts.js';
 import { DATA_DIR, PROJECT_ROOT } from '../app.js';
+import { ViewStore } from '../view.js';
 import { createAlert, conflictAlert } from './notifications.js';
 import { testNotification } from './notificationTest.js';
 import { saveBeforeClose } from './saveBeforeClose.js';
@@ -84,11 +85,23 @@ const notifyAlert = (alert: Pick<UsageAlert, 'title' | 'body'>, boardUrl: string
 const start = async () => {
   // The packaged app takes its icon from the bundle; `npm run app` would otherwise show Electron's.
   if (!app.isPackaged) app.dock?.setIcon(path.join(PROJECT_ROOT, 'build', 'icon.png'));
+  // Before the window opens, so its background and controls start in the chosen theme.
+  nativeTheme.themeSource = (await new ViewStore(path.join(DATA_DIR, 'view.json')).read()).theme;
   const board = await startBoardServer({
     dataDir: DATA_DIR,
     port: 0,
     onUsageAlert: (alert) => notifyAlert(alert, board.url),
     onConflictAlert: (conflict, cards) => notifyAlert(conflictAlert(conflict, cards), board.url),
+    onThemeChange: (theme) => { nativeTheme.themeSource = theme; },
+    notifications: {
+      test: () => {
+        const alert = createAlert({ title: 'Agent Hub notifications work', body: 'Usage and file-overlap alerts will show like this.' }, () => showBoard(board.url));
+        if (!alert) throw new Error('This Mac does not support notifications');
+        alert.show();
+      },
+      // Where macOS lists each app's notification permission and style.
+      openSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.Notifications-Settings.extension'),
+    },
   });
   openWindow(board.url);
 
