@@ -19,12 +19,13 @@ export const testNotification = async (): Promise<void> => {
     ];
     const alerts = new ConflictAlerts();
     const shared = await sessionConflicts(sessions);
-    if (shared.length !== 1 || alerts.take(shared).length) throw new Error('Workspace sharing detection failed or alerted without file overlap');
+    const sharing = alerts.take(shared);
+    if (shared.length !== 1 || sharing.length !== 1 || sharing[0].overlap) throw new Error('Workspace sharing detection failed or reported a file overlap');
     const overlaps = await sessionConflicts(sessions, undefined, new Map(sessions.map((session) => [session.id, [path.join(cwd, 'shared.ts')]])));
-    const [conflict] = alerts.take(overlaps);
-    if (!conflict || alerts.take(overlaps).length) throw new Error('File overlap detection or alert deduplication failed');
-    console.log('Notification test: shared workspace stayed silent; file overlap alerted once; repeat alerts suppressed.');
-    const alert = conflictAlert(conflict, sessions);
+    const [overlap] = alerts.take(overlaps);
+    if (!overlap?.overlap || alerts.take(overlaps).length) throw new Error('File overlap detection or alert deduplication failed');
+    console.log('Notification test: shared workspace and file overlap each alerted once; repeat alerts suppressed.');
+    const alert = conflictAlert(overlap.conflict, sessions);
     const notification = createAlert({ ...alert, title: `[Test] ${alert.title}` });
     if (!notification) throw new Error('Desktop notifications are not supported');
     await new Promise<void>((resolve, reject) => {

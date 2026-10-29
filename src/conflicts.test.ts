@@ -100,21 +100,23 @@ describe('sessionConflicts', () => {
 });
 
 describe('ConflictAlerts', () => {
-  it('stays silent for a shared workspace and alerts once files overlap, until the workspace overlap ends', async () => {
+  it('alerts once for a shared workspace and once files overlap, until the workspace overlap ends', async () => {
     const [shared] = await sessionConflicts([session('claude:a', '/repo'), session('codex:b', '/repo')], async () => worktree('/repo'));
     const overlap = { ...shared, files: ['shared.ts'] };
     const alerts = new ConflictAlerts();
+    expect(alerts.take([shared])).toEqual([{ conflict: shared, overlap: false }]);
     expect(alerts.take([shared])).toEqual([]);
-    expect(alerts.take([overlap])).toEqual([overlap]);
+    expect(alerts.take([overlap])).toEqual([{ conflict: overlap, overlap: true }]);
     expect(alerts.take([overlap])).toEqual([]);
-    // Starting another turn, changing files, or temporarily losing a source cannot repeat the alert.
+    // Starting another turn, changing files, or temporarily losing a source cannot repeat either alert.
     expect(alerts.take([shared])).toEqual([]);
     expect(alerts.take([{ ...overlap, files: ['another.ts'] }])).toEqual([]);
     expect(alerts.take([], ['claude'])).toEqual([]);
     expect(alerts.take([overlap])).toEqual([]);
     expect(alerts.take([])).toEqual([]);
+    // Seen again with an overlap straight away, it gets only the overlap alert.
+    expect(alerts.take([overlap])).toEqual([{ conflict: overlap, overlap: true }]);
     expect(alerts.take([shared])).toEqual([]);
-    expect(alerts.take([overlap])).toEqual([overlap]);
   });
 });
 

@@ -14,6 +14,7 @@ import { LAST_PROMPT_DIR, LastPromptStore } from './lastPrompt.js';
 import { isTicketId, TicketStore } from './ticket.js';
 import { openInApp, projectUrl, sessionUrl } from './openSession.js';
 import { PlacementStore } from './placements.js';
+import { isQuietTime } from './quietHours.js';
 import { isNotesText, NotesStore } from './notes.js';
 import { isViewPatch, ViewStore, type Theme, type ViewSettings } from './view.js';
 import { CLAUDE_BIN, fetchClaudeSessions, fetchClaudeUsage } from './sources/claude.js';
@@ -137,6 +138,8 @@ export interface BoardServer {
  * `onUsageAlert` gets each usage alert once; the desktop app shows them as notifications.
  * `onThemeChange` gets the theme the user picks, so the desktop app can match its window.
  * `notifications` sends a test notification and opens macOS's notification settings, for the desktop app.
+ * With `desktopToken`, only requests carrying it in an `x-agent-hub-token` header get an answer, which
+ * the desktop app adds to its window's requests; a browser opening the port gets a page saying so.
  * `claudeBin`, `codexBin` and `home` (where the tools' hook configs are) are only changed by tests.
  */
 export const startBoardServer = async ({
@@ -147,6 +150,7 @@ export const startBoardServer = async ({
   onConflictAlert,
   onThemeChange,
   notifications,
+  desktopToken,
   claudeBin = CLAUDE_BIN,
   codexBin = CODEX_BIN,
   home,
@@ -158,6 +162,7 @@ export const startBoardServer = async ({
   onConflictAlert?: (conflict: SessionConflict, cards: Card[]) => void;
   onThemeChange?: (theme: Theme) => void;
   notifications?: { test: () => void; openSettings: () => Promise<void> };
+  desktopToken?: string;
   claudeBin?: string;
   codexBin?: string;
   home?: string;
@@ -195,19 +200,22 @@ export const startBoardServer = async ({
   // Usage is checked for alerts on its own timer, since pages only poll while the board is
   // open. Each check reads the last answers; the reads it starts show in the next one.
   const alertLog = new UsageAlertLog(path.join(dataDir, 'usage-alerts.json'));
+  const sendUsageAlerts = async (send: (alert: UsageAlert) => void) => {
+    // Read first, also in quiet hours, so the figures are current when they end.
+    const current = usage.get(missing);
+    const settings = await view.read();
+    // In quiet hours nothing is taken, so a limit still close or a weekly reset still ahead alerts once they end.
+    if (isQuietTime(settings)) return;
+    const alerts = await alertLog.take(usageAlerts(current, Date.now(), settings.closePercent));
+    // Muted alerts are still logged as sent, so turning them back on does not replay old ones.
+    for (const alert of alerts.filter((alert) => (alert.kind === 'close' ? settings.usageAlerts : settings.spareAlerts))) {
+      console.log(`Usage alert: ${alert.title}`);
+      send(alert);
+    }
+  };
   const alertTimer = onUsageAlert
     ? setInterval(() => {
-        alertLog
-          .take(usageAlerts(usage.get(missing)))
-          .then(async (alerts) => {
-            // Muted alerts are still logged as sent, so turning them back on does not replay old ones.
-            if (!(await view.read()).usageAlerts) return;
-            for (const alert of alerts) {
-              console.log(`Usage alert: ${alert.title}`);
-              onUsageAlert(alert);
-            }
-          })
-          .catch((error: Error) => console.warn(`Usage alerts: ${error.message}`));
+        sendUsageAlerts(onUsageAlert).catch((error: Error) => console.warn(`Usage alerts: ${error.message}`));
       }, USAGE_ALERT_INTERVAL_MS)
     : undefined;
 
@@ -262,9 +270,13 @@ export const startBoardServer = async ({
     const unavailable = [...missing, ...Object.entries(SOURCE_NAMES)
       .filter(([, name]) => errors.some((error) => error.startsWith(`${name}:`)))
       .map(([source]) => source)];
-    // Like usage alerts, muted ones still count as sent.
+    // Like usage alerts, muted ones still count as sent. So do ones in quiet hours: concurrent work is news only as it happens.
     const newConflicts = conflictAlerts.take(conflicts, unavailable);
-    if (savedView.conflictAlerts) for (const conflict of newConflicts) onConflictAlert?.(conflict, cards);
+    if (!isQuietTime(savedView)) {
+      for (const { conflict, overlap } of newConflicts) {
+        if (overlap ? savedView.conflictAlerts : savedView.sharedAlerts) onConflictAlert?.(conflict, cards);
+      }
+    }
     return {
       columns: COLUMNS,
       cards: orderCards(cards, placed.order),
@@ -325,6 +337,11 @@ export const startBoardServer = async ({
     // Rejects pages on other origins that reach this port through DNS rebinding.
     if (!allowedHosts.has(req.headers.host ?? '')) return sendJson(res, 403, { error: 'forbidden host' });
     const url = new URL(req.url ?? '/', 'http://localhost');
+    if (desktopToken && req.headers['x-agent-hub-token'] !== desktopToken) {
+      if (url.pathname.startsWith('/api/')) return sendJson(res, 403, { error: 'Agent Hub only answers its desktop app' });
+      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+      return res.end('Agent Hub runs as a desktop app. Open it from the Applications folder.\n');
+    }
     try {
       if (req.method === 'GET' && url.pathname === '/api/board') return sendJson(res, 200, await getBoard());
 

@@ -180,6 +180,66 @@ describe('concurrent work alerts', () => {
     expect((await read()).conflicts[0].files).toEqual(['shared.ts']);
     expect(notify).not.toHaveBeenCalled();
   });
+  it('alerts once for possible concurrent work when that setting is on', async () => {
+    const repo = path.join(dataDir, 'repo');
+    await mkdir(repo);
+    await promisify(execFile)('git', ['init', '--initial-branch=main'], { cwd: repo });
+    vi.spyOn(claudeSource, 'fetchClaudeSessions').mockResolvedValue([{ id: 'claude:a', source: 'claude', title: 'Implement', cwd: repo, liveStatus: 'working' }]);
+    vi.spyOn(CodexAppServer.prototype, 'listThreads').mockResolvedValue([{ id: 'codex:b', source: 'codex', title: 'Review', cwd: repo, liveStatus: 'working' }]);
+    vi.spyOn(claudeSource, 'fetchClaudeUsage').mockResolvedValue({ source: 'claude', plan: null, windows: [], fetchedAt: 0 });
+    vi.spyOn(CodexAppServer.prototype, 'readUsage').mockResolvedValue({ source: 'codex', plan: null, windows: [], fetchedAt: 0 });
+    await writeFile(path.join(dataDir, 'view.json'), JSON.stringify({ sharedAlerts: true }));
+    const notify = vi.fn();
+    server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home'), onConflictAlert: notify });
+    await fetch(`${server.url}/api/board`);
+    await fetch(`${server.url}/api/board`);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify.mock.calls[0][0]).toMatchObject({ kind: 'worktree', files: [] });
+  });
+});
+
+describe('usage alerts', () => {
+  it('alerts at the chosen level, leaves out muted kinds, and waits out quiet hours', async () => {
+    const hour = 60 * 60_000;
+    vi.spyOn(claudeSource, 'fetchClaudeSessions').mockResolvedValue([]);
+    vi.spyOn(CodexAppServer.prototype, 'listThreads').mockResolvedValue([]);
+    vi.spyOn(CodexAppServer.prototype, 'readUsage').mockResolvedValue({ source: 'codex', plan: null, windows: [], fetchedAt: 0 });
+    vi.spyOn(claudeSource, 'fetchClaudeUsage').mockImplementation(async () => ({
+      source: 'claude', plan: 'max', fetchedAt: Date.now(), windows: [
+        { label: '5h', usedPercent: 85, resetsAt: Date.now() + 2 * hour },
+        { label: 'Weekly', usedPercent: 50, resetsAt: Date.now() + 20 * hour },
+      ],
+    }));
+    // A window around now that still holds if the hour turns during the test.
+    const hourNow = new Date().getHours();
+    await writeFile(path.join(dataDir, 'view.json'), JSON.stringify({
+      closePercent: 80, spareAlerts: false, quietHours: true, quietFrom: (hourNow + 23) % 24, quietTo: (hourNow + 2) % 24, quietWeekends: false,
+    }));
+    const notify = vi.fn();
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home'), onUsageAlert: notify });
+    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(notify).not.toHaveBeenCalled();
+    await fetch(`${server.url}/api/view`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ quietHours: false }),
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
+    expect(notify.mock.calls[0][0]).toMatchObject({ kind: 'close', title: 'Claude 5h limit: 15% left' });
+  });
+});
+
+describe('desktop only', () => {
+  it('answers only requests with the desktop token, and tells a browser where to go', async () => {
+    server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home'), desktopToken: 'secret' });
+    const page = await fetch(server.url);
+    expect(page.status).toBe(403);
+    expect(await page.text()).toMatch(/desktop app/);
+    expect((await fetch(`${server.url}/api/board`)).status).toBe(403);
+    expect((await fetch(`${server.url}/app.js`, { headers: { 'x-agent-hub-token': 'wrong' } })).status).toBe(403);
+    expect((await fetch(server.url, { headers: { 'x-agent-hub-token': 'secret' } })).status).toBe(200);
+  });
 });
 
 describe('notifications API', () => {
@@ -322,7 +382,7 @@ describe('view preferences API', () => {
     const save = (patch: object) => fetch(`${server!.url}/api/view`, {
       method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch),
     });
-    expect(await read()).toEqual({ hiddenRepos: [], hiddenSources: [], hiddenTickets: [], oldestFirst: [], layout: 'kanban', theme: 'system', usageAlerts: true, conflictAlerts: true, keepDays: 45 });
+    expect(await read()).toEqual({ hiddenRepos: [], hiddenSources: [], hiddenTickets: [], oldestFirst: [], layout: 'kanban', theme: 'system', usageAlerts: true, closePercent: 90, spareAlerts: true, sharedAlerts: false, conflictAlerts: true, keepDays: 45, quietHours: false, quietFrom: 18, quietTo: 8, quietWeekends: false });
     expect((await save({ hiddenRepos: ['project'], hiddenTickets: ['PROJ-1'] })).status).toBe(200);
     expect((await save({ oldestFirst: ['parked'] })).status).toBe(200);
     expect((await save({ layout: 'project' })).status).toBe(200);

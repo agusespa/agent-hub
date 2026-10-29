@@ -14,11 +14,21 @@ export interface ViewSettings {
   oldestFirst: string[];
   layout: Layout;
   theme: Theme;
-  /** Desktop alerts when a limit runs low or weekly room is about to reset. */
+  /** Desktop alerts when a limit is `closePercent` used. */
   usageAlerts: boolean;
+  closePercent: 80 | 90 | 95;
+  /** Desktop alerts when a weekly limit is about to reset with room left. */
+  spareAlerts: boolean;
+  /** Desktop alerts when two working sessions share a worktree or branch. */
+  sharedAlerts: boolean;
   /** Desktop alerts when two sessions edit the same files. */
   conflictAlerts: boolean;
   keepDays: KeepDays;
+  /** No desktop alerts from `quietFrom` to `quietTo` (local hours), and all weekend with `quietWeekends`. */
+  quietHours: boolean;
+  quietFrom: number;
+  quietTo: number;
+  quietWeekends: boolean;
 }
 
 const LIST_KEYS = ['hiddenRepos', 'hiddenSources', 'hiddenTickets', 'oldestFirst'] as const;
@@ -29,13 +39,22 @@ const isEntry = (key: ListKey, value: unknown): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= 500 &&
   (key !== 'oldestFirst' || value === 'parked' || value === 'done');
 
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+
 /** The settings with one value each, their allowed values, and the first as the default. */
 const CHOICES = {
   layout: ['kanban', 'project'],
   theme: ['system', 'light', 'dark'],
   usageAlerts: [true, false],
+  closePercent: [90, 80, 95],
+  spareAlerts: [true, false],
+  sharedAlerts: [false, true],
   conflictAlerts: [true, false],
   keepDays: [45, 14, 90],
+  quietHours: [false, true],
+  quietFrom: [18, ...HOURS],
+  quietTo: [8, ...HOURS],
+  quietWeekends: [false, true],
 } as const;
 type ChoiceKey = keyof typeof CHOICES;
 

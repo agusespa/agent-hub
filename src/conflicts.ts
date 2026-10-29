@@ -128,23 +128,35 @@ export const sessionConflicts = async (
   return [...conflicts.values()];
 };
 
+/** A conflict to alert about: sessions sharing a workspace, or, with `overlap`, editing the same files in it. */
+export interface ConflictAlert {
+  conflict: SessionConflict;
+  overlap: boolean;
+}
+
 /**
- * Alert once per observed file overlap, rearming after the sessions stop sharing a workspace.
- * Sharing alone stays a board warning: parallel tasks in one worktree are often independent.
- * Failed sources cannot end an overlap.
+ * Alert once when sessions start sharing a workspace and once when their edits overlap,
+ * rearming after they stop sharing it. A conflict first seen with an overlap gets only that
+ * alert. Settings decides which of the two are sent; parallel tasks in one worktree are often
+ * independent, so sharing alone is off by default. Failed sources cannot end a conflict.
  */
 export class ConflictAlerts {
   private active = new Map<string, SessionConflict>();
-  private alerted = new Set<string>();
+  private alerted = new Map<string, 'shared' | 'overlap'>();
 
-  take(conflicts: SessionConflict[], unavailableSources: string[] = []): SessionConflict[] {
-    const fresh = conflicts.filter((conflict) => conflict.files.length > 0 && !this.alerted.has(conflict.key));
+  take(conflicts: SessionConflict[], unavailableSources: string[] = []): ConflictAlert[] {
+    const fresh = conflicts.flatMap((conflict): ConflictAlert[] => {
+      const sent = this.alerted.get(conflict.key);
+      if (conflict.files.length > 0) return sent === 'overlap' ? [] : [{ conflict, overlap: true }];
+      return sent ? [] : [{ conflict, overlap: false }];
+    });
     const next = new Map(conflicts.map((conflict) => [conflict.key, conflict]));
     for (const [key, conflict] of this.active) {
       if (conflict.sessionIds.some((id) => unavailableSources.includes(id.split(':')[0]))) next.set(key, conflict);
     }
     this.active = next;
-    this.alerted = new Set([...this.alerted, ...fresh.map((conflict) => conflict.key)].filter((key) => next.has(key)));
+    for (const { conflict, overlap } of fresh) this.alerted.set(conflict.key, overlap ? 'overlap' : 'shared');
+    for (const key of this.alerted.keys()) if (!next.has(key)) this.alerted.delete(key);
     return fresh;
   }
 }

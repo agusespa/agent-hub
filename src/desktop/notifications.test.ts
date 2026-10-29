@@ -17,4 +17,11 @@ describe('conflictAlert', () => {
       title: 'Two sessions on one branch edited the same files', body: 'claude:a · codex:b\na.ts, b.ts, c.ts (+1 more)',
     });
   });
+
+  it('says where two sessions work together before they edit the same files', () => {
+    expect(conflictAlert(conflict, [{ id: 'claude:a', source: 'claude', title: 'Implement', liveStatus: 'working' }])).toEqual({
+      title: 'Two sessions are working in one worktree', body: 'Implement · codex:b\nPossible concurrent work; no edits to the same files so far.',
+    });
+    expect(conflictAlert({ ...conflict, kind: 'branch' }, []).title).toBe('Two sessions are working on main');
+  });
 });

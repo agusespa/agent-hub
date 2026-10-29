@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { PlanUsage, UsageWindow } from './types.js';
-import { UsageAlertLog, usageAlerts } from './usageAlerts.js';
+import { UsageAlertLog, usageAlerts, type UsageAlert } from './usageAlerts.js';
 
 const HOUR = 60 * 60_000;
 const NOW = new Date(2026, 9, 26, 12, 0).getTime();
@@ -21,9 +21,16 @@ describe('usageAlerts', () => {
     expect(usageAlerts(usage({ label: '5h', usedPercent: 89, resetsAt: NOW + HOUR }, { label: '5h', usedPercent: 100, resetsAt: NOW + HOUR }), NOW)).toEqual([]);
   });
 
+  it('alerts at the level set in Settings instead', () => {
+    const at = (closePercent: number) => usageAlerts(usage({ label: '5h', usedPercent: 85, resetsAt: NOW + HOUR }), NOW, closePercent);
+    expect(at(80).map((alert) => alert.kind)).toEqual(['close']);
+    expect(at(90)).toEqual([]);
+  });
+
   it('alerts on a weekly limit with room left that resets within a day', () => {
     const [alert] = usageAlerts(usage({ label: 'Weekly', usedPercent: 55, resetsAt: NOW + 20 * HOUR }), NOW);
     expect(alert.title).toBe('Claude weekly limit: 45% left');
+    expect(alert.kind).toBe('spare');
     expect(alert.body).toMatch(/^Resets tomorrow .*Use it before then\.$/);
   });
 
@@ -76,7 +83,7 @@ describe('UsageAlertLog', () => {
   });
   afterEach(() => rm(dir, { recursive: true, force: true }));
 
-  const alert = (key: string) => ({ key, title: key, body: '' });
+  const alert = (key: string): UsageAlert => ({ key, kind: 'close', title: key, body: '' });
 
   it('returns each alert once, also to a new instance on the same file', async () => {
     const file = path.join(dir, 'usage-alerts.json');
