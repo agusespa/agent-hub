@@ -8,7 +8,6 @@
   "main": "dist/desktop/main.js",
   "scripts": {
     "dev": "tsx watch src/server.ts --dev",
-    "start": "tsx src/server.ts",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "app": "npm run build && electron .",
     "package": "npm run build && node scripts/package.mjs",

@@ -1,3 +1,5 @@
+// The board in a browser, for development only (`npm run dev`): the desktop app's own server
+// answers nothing but its window.
 import { startBoardServer } from './boardServer.js';
 import { DATA_DIR } from './app.js';
 

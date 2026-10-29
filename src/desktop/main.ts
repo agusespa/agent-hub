@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, nativeTheme, session, shell } from 'electron';
 import { startBoardServer } from '../boardServer.js';
@@ -35,6 +36,9 @@ const useLoginShellPath = () => {
  */
 const backgroundColor = () => (nativeTheme.shouldUseDarkColors ? '#0a0c0f' : '#f6f7f5');
 
+/** The window's session; the board answers only requests from it (see `desktopToken`). */
+const uiSession = () => session.fromPartition('agent-hub-ui', { cache: false });
+
 const openWindow = (boardUrl: string) => {
   const window = new BrowserWindow({
     width: 1280,
@@ -50,7 +54,7 @@ const openWindow = (boardUrl: string) => {
     webPreferences: {
       contextIsolation: true, nodeIntegration: false, sandbox: true,
       preload: path.join(import.meta.dirname, 'preload.cjs'),
-      session: session.fromPartition('agent-hub-ui', { cache: false }),
+      session: uiSession(),
     },
   });
   window.once('ready-to-show', () => window.show());
@@ -87,9 +91,11 @@ const start = async () => {
   if (!app.isPackaged) app.dock?.setIcon(path.join(PROJECT_ROOT, 'build', 'icon.png'));
   // Before the window opens, so its background and controls start in the chosen theme.
   nativeTheme.themeSource = (await new ViewStore(path.join(DATA_DIR, 'view.json')).read()).theme;
+  const desktopToken = randomUUID();
   const board = await startBoardServer({
     dataDir: DATA_DIR,
     port: 0,
+    desktopToken,
     onUsageAlert: (alert) => notifyAlert(alert, board.url),
     onConflictAlert: (conflict, cards) => notifyAlert(conflictAlert(conflict, cards), board.url),
     onThemeChange: (theme) => { nativeTheme.themeSource = theme; },
@@ -102,6 +108,13 @@ const start = async () => {
       // Where macOS lists each app's notification permission and style.
       openSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.Notifications-Settings.extension'),
     },
+  });
+  // Every request the window makes, page, fetches and event stream alike, carries the token.
+  // Checked by prefix rather than a URL filter, whose patterns differ on ports; it never goes elsewhere.
+  uiSession().webRequest.onBeforeSendHeaders((details, callback) => {
+    callback({ requestHeaders: details.url.startsWith(`${board.url}/`)
+      ? { ...details.requestHeaders, 'x-agent-hub-token': desktopToken }
+      : details.requestHeaders });
   });
   openWindow(board.url);
 
