@@ -34,15 +34,30 @@
 
 .conflict-warning {
   padding: 6px 8px;
-  border: 1px solid color-mix(in srgb, var(--waiting) 55%, var(--border));
-  background: color-mix(in srgb, var(--waiting) 8%, var(--surface));
+  border: 1px dashed var(--border);
+  color: var(--muted);
   font-size: 12px;
 }
 
 .conflict-warning summary {
+  cursor: pointer;
+}
+
+.conflict-overlap {
+  border: 1px solid color-mix(in srgb, var(--waiting) 55%, var(--border));
+  background: color-mix(in srgb, var(--waiting) 8%, var(--surface));
+  color: inherit;
+}
+
+.conflict-overlap summary {
   color: var(--waiting);
   font-weight: 600;
-  cursor: pointer;
+}
+
+.conflict-note {
+  display: block;
+  margin: 4px 0;
+  color: var(--muted);
 }
 
 .conflict-warning p {

@@ -538,13 +538,16 @@ const renderCard = (card) => {
 
   const conflicts = (board.conflicts ?? []).filter((conflict) => conflict.sessionIds.includes(card.id));
   if (conflicts.length) {
-    const warning = el('details', 'conflict-warning');
-    warning.append(el('summary', '', conflicts.some((conflict) => conflict.files.length > 0) ? '⚠ Overlapping file edits' : '⚠ Concurrent work'));
+    // Sharing a workspace is only a possible issue; observed edits to the same files are the real one.
+    const overlapping = conflicts.some((conflict) => conflict.files.length > 0);
+    const warning = el('details', `conflict-warning${overlapping ? ' conflict-overlap' : ''}`);
+    warning.append(el('summary', '', overlapping ? '⚠ Overlapping file edits' : 'Possible concurrent work'));
     for (const conflict of conflicts) {
       const other = board.cards.find((candidate) => candidate.id === conflict.sessionIds.find((id) => id !== card.id));
       const description = el('p', '', `${conflict.kind === 'worktree' ? 'Same worktree' : `Same branch (${conflict.branch})`}: ${other ? `${SOURCE_LABELS[other.source]} · ${other.title}` : 'another working session'}`);
       description.append(el('span', 'conflict-location', conflict.location));
       if (conflict.files.length > 0) description.append(el('span', 'conflict-location', `Observed edits to the same files:\n${conflict.files.join('\n')}`));
+      else description.append(el('span', 'conflict-note', 'No edits to the same files so far. You get an alert if that changes.'));
       if (other?.openId) {
         const open = el('button', 'link-button', `Open in ${SOURCE_LABELS[other.source]} ↗`);
         open.type = 'button';
