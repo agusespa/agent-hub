@@ -440,18 +440,23 @@ $('#card-details').addEventListener('keydown', (event) => {
     first?.focus();
   }
 });
-const outsideDetails = (event) => {
-  const box = $('#card-details').getBoundingClientRect();
+const outsideDialog = (dialog, event) => {
+  const box = dialog.getBoundingClientRect();
   return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
 };
-let backdropPointerDown = false;
-$('#card-details').addEventListener('pointerdown', (event) => {
-  backdropPointerDown = event.target === $('#card-details') && outsideDetails(event);
-});
-$('#card-details').addEventListener('click', (event) => {
-  if (backdropPointerDown && event.target === $('#card-details') && outsideDetails(event)) closeDetails();
-  backdropPointerDown = false;
-});
+/** Closes a dialog on a click on its backdrop, but not when a text selection started inside ends there. */
+const closeOnBackdrop = (dialog, close) => {
+  let backdropPointerDown = false;
+  dialog.addEventListener('pointerdown', (event) => {
+    backdropPointerDown = event.target === dialog && outsideDialog(dialog, event);
+  });
+  dialog.addEventListener('click', (event) => {
+    if (backdropPointerDown && event.target === dialog && outsideDialog(dialog, event)) close();
+    backdropPointerDown = false;
+  });
+};
+closeOnBackdrop($('#card-details'), closeDetails);
+closeOnBackdrop($('#tool-config'), () => $('#tool-config').close());
 // Give pending edits a final local save when the preview reloads or the Electron window closes.
 window.addEventListener('pagehide', () => {
   for (const [id, draft] of noteDrafts) {
@@ -795,6 +800,104 @@ const setHooks = async (on) => {
   }
   hooksSaving = false;
   await poll();
+};
+
+/** The config dialog's session folder, or null for global, and its latest load, so a slower answer for another scope is dropped. */
+let configCwd = null;
+let configLoads = 0;
+
+/** Claude keeps these MCP servers outside its files, so only its command can change them. */
+const CLAUDE_MCP_HINT = {
+  global: 'MCP servers for every project: `claude mcp add --scope user` and `claude mcp remove`.',
+  project: 'MCP servers in this project just for you: `claude mcp add --scope local` and `claude mcp remove`, run in its folder.',
+};
+
+/** A hint's text, with `code` in backticks. */
+const hint = (text) => {
+  const node = el('p', 'usage-note');
+  text.split('`').forEach((part, index) => node.append(index % 2 ? el('code', '', part) : part));
+  return node;
+};
+
+const configFileRow = (file) => {
+  const row = el('li', 'config-file');
+  const about = el('div', 'config-file-about');
+  about.append(el('span', '', file.label), el('code', '', file.shown));
+  if (!file.exists) about.append(el('span', 'usage-note', 'Not created yet'));
+  row.append(about);
+  return row;
+};
+
+/** Opens a folder of config files in a VS Code window of its own. */
+const configFolderButton = (folder, text) => {
+  const open = el('button', 'details-action', text);
+  open.type = 'button';
+  open.addEventListener('click', () => openConfigFolder(folder));
+  return open;
+};
+
+/** Globally each tool has a folder of its own to open; a project's files all sit at its root, opened above the tools. */
+const renderConfigFiles = (source, files, root, folder) => {
+  const section = el('section', `config-tool ${source}`);
+  const heading = el('div', 'config-tool-heading');
+  heading.append(el('h3', '', SOURCE_LABELS[source]));
+  if (!root) heading.append(configFolderButton(folder, `Open ~/.${source} ↗`));
+  const list = el('ul', 'config-files');
+  list.append(...files.map(configFileRow));
+  section.append(heading, list);
+  if (source === 'claude') section.append(hint(root ? CLAUDE_MCP_HINT.project : CLAUDE_MCP_HINT.global));
+  return section;
+};
+
+/** Global, then each session folder on the board by project; a project with several folders shows their last two parts. */
+const fillConfigScope = () => {
+  const folders = new Map();
+  for (const card of board?.cards ?? []) if (card.cwd) folders.set(card.cwd, card.repo);
+  const repoCount = (repo) => [...folders.values()].filter((other) => other === repo).length;
+  const projects = [...folders]
+    .map(([cwd, repo]) => [cwd, repoCount(repo) > 1 ? `${repo} · ${cwd.split('/').slice(-2).join('/')}` : repo])
+    .sort(([, a], [, b]) => a.localeCompare(b, undefined, { numeric: true }));
+  if (configCwd && !folders.has(configCwd)) configCwd = null;
+  $('#config-scope').replaceChildren(...[['', 'Global'], ...projects].map(([value, label]) => {
+    const option = el('option', '', label);
+    Object.assign(option, { value, selected: value === (configCwd ?? '') });
+    return option;
+  }));
+};
+
+const loadConfig = async () => {
+  const load = ++configLoads;
+  try {
+    const config = await send('POST', '/api/config', { cwd: configCwd });
+    if (load !== configLoads) return;
+    const sources = Object.keys(SOURCE_LABELS).filter((source) => config.files.some((file) => file.source === source));
+    $('#config-tools').replaceChildren(...(sources.length
+      ? sources.map((source) => renderConfigFiles(source, config.files.filter((file) => file.source === source), config.root, config.folders[source]))
+      : [el('p', 'usage-note', 'Neither Claude Code nor Codex was found.')]));
+    $('#config-status').textContent = config.root ?? 'For every project, unless a project sets its own';
+    $('#config-project').replaceChildren(...(config.root && sources.length ? [configFolderButton(config.root, 'Open in VS Code ↗')] : []));
+  } catch (error) {
+    if (load !== configLoads) return;
+    $('#config-tools').replaceChildren();
+    $('#config-project').replaceChildren();
+    $('#config-status').textContent = `Couldn’t list the config files: ${error.message}`;
+  }
+};
+
+const openConfigFolder = async (folder) => {
+  try {
+    await send('POST', '/api/config/open', { cwd: configCwd, folder });
+  } catch (error) {
+    showError(`Opening ${folder} failed: ${error.message}`);
+  }
+};
+
+const openConfig = () => {
+  $('#settings').open = false;
+  fillConfigScope();
+  $('#tool-config').showModal();
+  $('#config-close').focus();
+  void loadConfig();
 };
 
 /** The card the dragged one would land before at height `y`, or null for the end of the list. */
@@ -1198,6 +1301,12 @@ $('#notifications-test').addEventListener('click', () =>
   notificationAction('test', 'Sent. If it did not show, allow Agent Hub in macOS settings.'));
 $('#notifications-settings').addEventListener('click', () => notificationAction('settings', ''));
 $('#hooks-toggle').addEventListener('change', (event) => setHooks(event.target.checked));
+$('#config-open').addEventListener('click', openConfig);
+$('#config-close').addEventListener('click', () => $('#tool-config').close());
+$('#config-scope').addEventListener('change', (event) => {
+  configCwd = event.target.value || null;
+  void loadConfig();
+});
 // Only one view applies, so choosing it closes the menu.
 $('#layout').addEventListener('change', (event) => {
   view.layout = event.target.value;

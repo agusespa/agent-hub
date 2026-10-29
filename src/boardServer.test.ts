@@ -291,6 +291,53 @@ describe('opening projects', () => {
   });
 });
 
+describe('config files', () => {
+  it('lists config files and opens only the folders that hold them', async () => {
+    const home = path.join(dataDir, 'home');
+    const cwd = path.join(dataDir, 'project');
+    await mkdir(path.join(home, '.claude'), { recursive: true });
+    await writeFile(path.join(home, '.claude', 'settings.json'), '{}');
+    await mkdir(cwd);
+    await writeFile(path.join(cwd, '.mcp.json'), '{}');
+    vi.spyOn(claudeSource, 'fetchClaudeSessions').mockResolvedValue([
+      { id: 'claude:a', source: 'claude', title: 'Project', cwd, liveStatus: null },
+      { id: 'claude:home', source: 'claude', title: 'In the home folder', cwd: home, liveStatus: 'working' },
+    ]);
+    vi.spyOn(CodexAppServer.prototype, 'listThreads').mockResolvedValue([]);
+    vi.spyOn(claudeSource, 'fetchClaudeUsage').mockResolvedValue({ source: 'claude', plan: null, windows: [], fetchedAt: 0 });
+    vi.spyOn(CodexAppServer.prototype, 'readUsage').mockResolvedValue({ source: 'codex', plan: null, windows: [], fetchedAt: 0 });
+    const open = vi.spyOn(sessionOpening, 'openInApp').mockResolvedValue();
+    server = await startBoardServer({ dataDir, port: 0, home });
+    // The home folder is no project, so its sessions stay off the board and out of the config list.
+    expect((await (await fetch(`${server.url}/api/board`)).json()).cards.map((card: { id: string }) => card.id)).toEqual(['claude:a']);
+    const request = (pathname: string, body: object) => fetch(`${server!.url}${pathname}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+
+    const global = await (await request('/api/config', {})).json();
+    expect(global.root).toBeNull();
+    expect(global.folders).toEqual({ claude: path.join(home, '.claude'), codex: path.join(home, '.codex') });
+    expect(global.files).toContainEqual(expect.objectContaining({ source: 'claude', shown: '~/.claude/settings.json', exists: true }));
+    expect(global.files).toContainEqual(expect.objectContaining({ source: 'codex', shown: '~/.codex/config.toml', exists: false }));
+
+    const project = await (await request('/api/config', { cwd })).json();
+    expect(project.root).toBe(cwd);
+    expect(project.folders).toEqual({ claude: cwd, codex: cwd });
+    expect(project.files.find((file: { shown: string }) => file.shown === '.mcp.json')).toMatchObject({ path: path.join(cwd, '.mcp.json'), exists: true });
+
+    expect((await request('/api/config/open', { folder: path.join(home, '.codex') })).status).toBe(200);
+    expect((await request('/api/config/open', { cwd, folder: cwd })).status).toBe(200);
+    expect(open.mock.calls).toEqual([[sessionOpening.vscodeUrl(path.join(home, '.codex'))], [sessionOpening.vscodeUrl(cwd)]]);
+    // Only those folders, and only for folders of sessions on the board.
+    expect((await request('/api/config/open', { cwd, folder: path.join(cwd, '.mcp.json') })).status).toBe(400);
+    expect((await request('/api/config/open', { folder: cwd })).status).toBe(400);
+    expect((await request('/api/config', { cwd: dataDir })).status).toBe(400);
+    expect((await request('/api/config', { cwd: home })).status).toBe(400);
+    expect((await request('/api/config', { cwd: 42 })).status).toBe(400);
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('renaming sessions', () => {
   const records: SessionRecord[] = [
     { id: 'claude:a', source: 'claude', renameId: 'claude-session', title: 'Claude title', liveStatus: null },

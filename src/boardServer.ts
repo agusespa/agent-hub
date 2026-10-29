@@ -1,18 +1,20 @@
 import { watch } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
+import { homedir } from 'node:os';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { cardsStartedWorking, DAY_MS, isOnBoard, orderCards, toCard } from './board.js';
 import { PROJECT_ROOT } from './app.js';
-import { ConflictAlerts, sessionConflicts, type SessionConflict } from './conflicts.js';
+import { configFiles, configFolders } from './configFiles.js';
+import { ConflictAlerts, readWorktree, sessionConflicts, type SessionConflict } from './conflicts.js';
 import { FILE_ACTIVITY_DIR, FileActivityStore } from './fileActivity.js';
 import { repoNameForCwd } from './git.js';
 import { HookInstaller, type HookState } from './hookInstall.js';
 import { HOOK_STATUS_DIR, HookStatusMerge, HookStatusStore, lastEventBySource } from './hookStatus.js';
 import { LAST_PROMPT_DIR, LastPromptStore } from './lastPrompt.js';
 import { isTicketId, TicketStore } from './ticket.js';
-import { openInApp, projectUrl, sessionUrl } from './openSession.js';
+import { openInApp, projectUrl, sessionUrl, vscodeUrl } from './openSession.js';
 import { PlacementStore } from './placements.js';
 import { isQuietTime } from './quietHours.js';
 import { isNotesText, NotesStore } from './notes.js';
@@ -88,6 +90,7 @@ const STATIC_FILES: Record<string, { file: string; type: string }> = {
   '/board.css': { file: 'board.css', type: 'text/css; charset=utf-8' },
   '/cards.css': { file: 'cards.css', type: 'text/css; charset=utf-8' },
   '/details.css': { file: 'details.css', type: 'text/css; charset=utf-8' },
+  '/config.css': { file: 'config.css', type: 'text/css; charset=utf-8' },
   '/icon.svg': { file: 'icon.svg', type: 'image/svg+xml' },
 };
 
@@ -183,6 +186,7 @@ export const startBoardServer = async ({
     hookState = await hookInstaller.state();
   }
   const allowedHosts = new Set<string>();
+  const homeFolder = home ?? homedir();
   const claudeUsageCwd = path.join(dataDir, 'claude-usage');
   const usage = new UsageMeter({
     // Claude's usage endpoint is tightly rate limited and shared with the app's own usage views.
@@ -234,7 +238,9 @@ export const startBoardServer = async ({
     if (missing.size === Object.keys(SOURCE_NAMES).length) {
       errors.push(`Neither Claude Code nor Codex was found: no \`${claudeBin}\` on PATH and no ${codexBin}. Install one.`);
     }
+    // A session started in the home folder belongs to no project, so it stays off the board.
     const records = hookMerge.apply([...claude, ...codexThreads], hooked).filter((record) =>
+      record.cwd !== homeFolder &&
       isOnBoard(record, { placement: placed.columns.get(record.id), ticket: keys.get(record.id), notes: savedNotes.get(record.id), lastPromptAt: prompted.get(record.id) }, Date.now(), savedView.keepDays * DAY_MS),
     );
     const cards = await Promise.all(
@@ -425,6 +431,27 @@ export const startBoardServer = async ({
         if (!notifications) return sendJson(res, 404, { error: 'Notifications are only sent by the desktop app' });
         if (action === 'test') notifications.test();
         else await notifications.openSettings();
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (req.method === 'POST' && (url.pathname === '/api/config' || url.pathname === '/api/config/open')) {
+        const { cwd = null, folder } = await readJson(req);
+        // Only session folders on the board, so the page cannot list or open folders anywhere else.
+        if (cwd !== null && (typeof cwd !== 'string' || !(lastBoard ?? (await getBoard())).cards.some((card) => card.cwd === cwd))) {
+          return sendJson(res, 400, { error: 'Pick a project from the list' });
+        }
+        // Project config sits at the checkout's root, also for a session started in a subfolder.
+        const root = cwd === null ? null : ((await readWorktree(cwd))?.root ?? cwd);
+        const sources = (Object.keys(SOURCE_NAMES) as Source[]).filter((source) => !missing.has(source));
+        const folders = Object.fromEntries(Object.entries(configFolders(root, home)).filter(([source]) => sources.includes(source as Source)));
+        if (url.pathname === '/api/config') {
+          const files = (await configFiles(root, home)).filter((config) => sources.includes(config.source));
+          return sendJson(res, 200, { root, folders, files });
+        }
+        const link = Object.values(folders).includes(folder as string) ? vscodeUrl(folder as string) : undefined;
+        if (!link) return sendJson(res, 400, { error: 'This folder does not hold the config files' });
+        await openInApp(link);
+        console.log(`Opened ${folder}`);
         return sendJson(res, 200, { ok: true });
       }
 

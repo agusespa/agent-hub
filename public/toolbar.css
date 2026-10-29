@@ -426,6 +426,32 @@
   text-transform: uppercase;
 }
 
+/* One row that opens the config files, pinned under the sections so it shows without scrolling. */
+.settings-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-footer:hover {
+  background: var(--column);
+}
+
+.settings-footer:hover .usage-note {
+  color: var(--text);
+}
+
 .settings-section .multi-select-option {
   margin: 0 -6px;
   font-size: 14px;

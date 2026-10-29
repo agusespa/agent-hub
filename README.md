@@ -10,6 +10,7 @@ A local macOS app for keeping track of Claude Code and Codex sessions in one kan
 - Open sessions in Codex and project folders in VS Code.
 - Plan usage and reset times, with alerts for low capacity and unused weekly capacity, an alert level and quiet hours.
 - Concurrent-work warnings for sessions sharing a worktree or branch, including through edits outside their own project, with alerts when they edit the same files and, if chosen in Settings, when they start sharing.
+- **Settings → Config files** lists Claude's and Codex's settings, MCP and instruction files, globally or for a project on the board, and opens the folder that holds them in VS Code.
 
 ## Install
 
@@ -47,4 +48,4 @@ This adds Agent Hub hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`
 
 Filters, sorting, the view and theme, card positions, tickets, and notes save automatically in `~/Library/Application Support/Agent Hub/`. Agent Hub does not display or store prompt or transcript text.
 
-Sessions leave the board after 45 days without a prompt (or since session start if none was recorded), unless running, moved out of Parked, or given a ticket or notes. **Settings → Keep idle sessions** changes this to 2 weeks or 90 days.
+Sessions leave the board after 45 days without a prompt (or since session start if none was recorded), unless running, moved out of Parked, or given a ticket or notes. **Settings → Keep idle sessions** changes this to 2 weeks or 90 days. Sessions started in your home folder are not shown, as they belong to no project.
