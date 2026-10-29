@@ -15,6 +15,7 @@
   --waiting: #9a6408;
   --idle: #a9ada6;
   --closed: #c03a3a;
+  --danger: #c03a3a;
   --drop: #e2f2ee;
   --repo-text: 32%;
   --mono: ui-monospace, 'SF Mono', Menlo, monospace;
@@ -35,6 +36,7 @@
     --waiting: #e6a640;
     --idle: #4a525c;
     --closed: #f07272;
+    --danger: #f07272;
     --drop: #0f2420;
     --repo-text: 72%;
   }

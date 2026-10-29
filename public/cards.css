@@ -34,24 +34,25 @@
 
 .conflict-warning {
   padding: 6px 8px;
-  border: 1px dashed var(--border);
-  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--waiting) 55%, var(--border));
+  background: color-mix(in srgb, var(--waiting) 8%, var(--surface));
   font-size: 12px;
 }
 
 .conflict-warning summary {
+  color: var(--waiting);
+  font-weight: 600;
   cursor: pointer;
 }
 
+/* Observed edits to the same files are more serious than a shared workspace. */
 .conflict-overlap {
-  border: 1px solid color-mix(in srgb, var(--waiting) 55%, var(--border));
-  background: color-mix(in srgb, var(--waiting) 8%, var(--surface));
-  color: inherit;
+  border-color: color-mix(in srgb, var(--danger) 60%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
 }
 
 .conflict-overlap summary {
-  color: var(--waiting);
-  font-weight: 600;
+  color: var(--danger);
 }
 
 .conflict-note {

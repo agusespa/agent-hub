@@ -541,7 +541,7 @@ const renderCard = (card) => {
     // Sharing a workspace is only a possible issue; observed edits to the same files are the real one.
     const overlapping = conflicts.some((conflict) => conflict.files.length > 0);
     const warning = el('details', `conflict-warning${overlapping ? ' conflict-overlap' : ''}`);
-    warning.append(el('summary', '', overlapping ? '⚠ Overlapping file edits' : 'Possible concurrent work'));
+    warning.append(el('summary', '', overlapping ? '⚠ Overlapping file edits' : '⚠ Possible concurrent work'));
     for (const conflict of conflicts) {
       const other = board.cards.find((candidate) => candidate.id === conflict.sessionIds.find((id) => id !== card.id));
       const description = el('p', '', `${conflict.kind === 'worktree' ? 'Same worktree' : `Same branch (${conflict.branch})`}: ${other ? `${SOURCE_LABELS[other.source]} · ${other.title}` : 'another working session'}`);
