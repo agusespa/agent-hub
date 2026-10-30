@@ -579,6 +579,9 @@ const renderCard = (card) => {
     branch.title = card.branch;
     top.append(branch);
   }
+  // Beside the branch, like an editor's status bar, so it reads as that branch's state.
+  const git = gitTag(card);
+  if (git) top.append(git);
   const actions = el('div', 'card-actions');
   if (card.cwd) {
     const open = el('button', 'icon-button open-project');
@@ -646,8 +649,6 @@ const renderCard = (card) => {
     tags.append(el('span', `status status-${card.liveStatus}`, STATUS_LABELS[card.liveStatus]));
   }
   if (card.handover) tags.append(handoverTag(card.handover));
-  const git = gitTag(card);
-  if (git) tags.append(git);
   if ((noteDrafts.get(card.id)?.text ?? card.notes ?? '').trim()) {
     const notes = el('span', 'notes-indicator', '▤');
     notes.title = 'Has notes';

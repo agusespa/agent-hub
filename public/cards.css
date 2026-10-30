@@ -164,7 +164,10 @@
   content: '→ ';
 }
 
+/* Kept whole and drawn in close to the branch, which shortens first. */
 .git-tag {
+  flex-shrink: 0;
+  margin-left: -3px;
   font-family: var(--mono);
   font-size: 11px;
   color: var(--muted);
