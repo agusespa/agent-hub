@@ -11,7 +11,7 @@ import { configFiles, configFolders } from './configFiles.js';
 import { ConflictAlerts, readWorktree, sessionConflicts, type SessionConflict } from './conflicts.js';
 import { FILE_ACTIVITY_DIR, FileActivityStore } from './fileActivity.js';
 import { claudeResumeId, codexNewThreadUrl, currentHandover, handoverPrompt, HandoverStore, isHandoverKind, summarizeClaudeSession, type HandoverKind } from './handover.js';
-import { repoNameForCwd } from './git.js';
+import { readGitWork, repoNameForCwd } from './git.js';
 import { HookInstaller, type HookState } from './hookInstall.js';
 import { HOOK_STATUS_DIR, HookStatusMerge, HookStatusStore, lastEventBySource } from './hookStatus.js';
 import { LAST_PROMPT_DIR, LastPromptStore } from './lastPrompt.js';
@@ -23,7 +23,7 @@ import { isNotesText, NotesStore } from './notes.js';
 import { isViewPatch, ViewStore, type Theme, type ViewSettings } from './view.js';
 import { CLAUDE_BIN, fetchClaudeSessions, fetchClaudeUsage } from './sources/claude.js';
 import { CODEX_BIN, CodexAppServer } from './sources/codex.js';
-import { COLUMNS, isColumnId, type Card, type LiveStatus, type PlanUsage, type SessionRecord, type Source } from './types.js';
+import { COLUMNS, isColumnId, type Card, type GitWork, type LiveStatus, type PlanUsage, type SessionRecord, type Source } from './types.js';
 import { UsageMeter } from './usage.js';
 import { UsageAlertLog, usageAlerts, type UsageAlert } from './usageAlerts.js';
 
@@ -250,6 +250,13 @@ export const startBoardServer = async ({
       record.cwd !== homeFolder &&
       isOnBoard(record, { placement: placed.columns.get(record.id), ticket: keys.get(record.id), notes: savedNotes.get(record.id), lastPromptAt: prompted.get(record.id) }, Date.now(), savedView.keepDays * DAY_MS),
     );
+    // One read per folder per build; sessions in the same folder share it.
+    const gitWork = new Map<string, Promise<GitWork | undefined>>();
+    const readFolder = (cwd: string) => {
+      let work = gitWork.get(cwd);
+      if (!work) gitWork.set(cwd, (work = readGitWork(cwd)));
+      return work;
+    };
     const cards = await Promise.all(
       records.map(async (record) => {
         const card = toCard(record, {
@@ -260,7 +267,8 @@ export const startBoardServer = async ({
           lastPromptAt: prompted.get(record.id),
         });
         const handover = currentHandover(handedOver.get(record.id), card);
-        return handover ? { ...card, handover } : card;
+        const git = card.cwd ? await readFolder(card.cwd) : undefined;
+        return { ...card, ...(handover && { handover }), ...(git && { git }) };
       }),
     );
     const started = cardsStartedWorking(cards, lastStatuses, placed.columns);

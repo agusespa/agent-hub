@@ -164,6 +164,17 @@
   content: '→ ';
 }
 
+.git-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.git-tag-done {
+  color: var(--waiting);
+}
+
 .time {
   flex-shrink: 0;
   margin-left: auto;

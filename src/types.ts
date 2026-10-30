@@ -73,6 +73,14 @@ export interface PlanUsage {
   error?: string;
 }
 
+/** Work in a session's worktree that exists only on this machine. */
+export interface GitWork {
+  /** Uncommitted files, untracked ones included. */
+  changed: number;
+  /** Commits on no remote; absent for a repository without remotes, where every commit would count. */
+  unpushed?: number;
+}
+
 /** Codex either reviews a Claude session's work or takes it over. */
 export type HandoverKind = 'review' | 'continue';
 
@@ -93,4 +101,6 @@ export interface Card extends SessionRecord {
   lastPromptAt?: number;
   /** The last handover, until the session is used again. */
   handover?: Handover;
+  /** Absent where the folder is gone or not in a Git repository. */
+  git?: GitWork;
 }

@@ -84,6 +84,26 @@ const handoverTag = ({ kind, at }, text = HANDOVER_LABELS[kind]) => {
   return tag;
 };
 
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+/** What a session's worktree has that is not on a remote yet, or '' when nothing. */
+const gitSummary = ({ changed, unpushed }) =>
+  [changed && plural(changed, 'uncommitted file'), unpushed && plural(unpushed, 'unpushed commit')].filter(Boolean).join(', ');
+
+/** Work only on this machine; a warning once the card is in Done, as it may be left behind. */
+const gitTag = (card) => {
+  const summary = card.git && gitSummary(card.git);
+  if (!summary) return undefined;
+  const { changed, unpushed } = card.git;
+  const text = [changed && `±${changed}`, unpushed && `↑${unpushed}`].filter(Boolean).join(' ');
+  const done = card.column === 'done';
+  const tag = el('span', done ? 'git-tag git-tag-done' : 'git-tag', done ? `⚠ ${text}` : text);
+  tag.title = `${summary} in this session's worktree${done ? ', though the card is in Done' : ''}`;
+  tag.setAttribute('role', 'img');
+  tag.setAttribute('aria-label', tag.title);
+  return tag;
+};
+
 const timeAgo = (ms) => {
   if (!ms) return 'unknown';
   const seconds = Math.max(0, (Date.now() - ms) / 1000);
@@ -334,6 +354,8 @@ const renderDetails = () => {
     ['project', card.repo],
     ['folder', card.cwd ?? 'No folder'],
     ['branch', card.branch ?? 'Not reported'],
+    ['git', !card.git ? (card.cwd ? 'No Git repository' : 'No folder')
+      : `${gitSummary(card.git) || 'Nothing uncommitted or unpushed'}${card.git.unpushed === undefined ? ' · no remote' : ''}`],
     ['column', board?.columns.find((column) => column.id === card.column)?.title ?? card.column],
   ];
   for (const [field, value] of metadata) $(`#details-${field}`).textContent = value;
@@ -624,6 +646,8 @@ const renderCard = (card) => {
     tags.append(el('span', `status status-${card.liveStatus}`, STATUS_LABELS[card.liveStatus]));
   }
   if (card.handover) tags.append(handoverTag(card.handover));
+  const git = gitTag(card);
+  if (git) tags.append(git);
   if ((noteDrafts.get(card.id)?.text ?? card.notes ?? '').trim()) {
     const notes = el('span', 'notes-indicator', '▤');
     notes.title = 'Has notes';
