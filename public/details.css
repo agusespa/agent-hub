@@ -219,9 +219,27 @@
   cursor: pointer;
 }
 
-.handover-options button:is(:hover, :focus-visible) {
+.handover-options button:is(:hover, :focus-visible):not(:disabled) {
   background: var(--column);
   color: var(--accent);
+}
+
+.handover-options button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.handover-badge {
+  display: inline-flex;
+  align-items: center;
+}
+
+.handover-clear {
+  line-height: 1;
+}
+
+.handover-clear:hover {
+  color: var(--text);
 }
 
 /* Both labels share one cell, so the button keeps the width of the longer one while it works. */

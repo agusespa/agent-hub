@@ -312,10 +312,24 @@ const renderDetails = () => {
     title.removeAttribute('role');
     title.removeAttribute('aria-label');
   }
-  const badges = [el('span', `badge badge-${card.source}`, SOURCE_LABELS[card.source])];
-  if (card.liveStatus) badges.push(el('span', `status status-${card.liveStatus}`, STATUS_LABELS[card.liveStatus]));
-  if (card.handover) badges.push(handoverTag(card.handover, `${HANDOVER_LABELS[card.handover.kind]} · ${timeAgo(card.handover.at)}`));
-  $('#details-badges').replaceChildren(...badges);
+  // Rebuilt only when they change, so polls do not take focus from the clear button.
+  const handoverText = card.handover && `${HANDOVER_LABELS[card.handover.kind]} · ${timeAgo(card.handover.at)}`;
+  const badgesState = JSON.stringify([card.id, card.source, card.liveStatus, handoverText]);
+  if ($('#details-badges').dataset.state !== badgesState) {
+    $('#details-badges').dataset.state = badgesState;
+    const badges = [el('span', `badge badge-${card.source}`, SOURCE_LABELS[card.source])];
+    if (card.liveStatus) badges.push(el('span', `status status-${card.liveStatus}`, STATUS_LABELS[card.liveStatus]));
+    if (card.handover) {
+      const clear = el('button', 'icon-button handover-clear', '×');
+      clear.type = 'button';
+      clear.ariaLabel = 'Clear handover label';
+      clear.title = 'Clear the label, so this session can be handed over the same way again';
+      clear.addEventListener('click', () => clearHandover(card.id));
+      badges.push(el('span', 'handover-badge'));
+      badges.at(-1).append(handoverTag(card.handover, handoverText), clear);
+    }
+    $('#details-badges').replaceChildren(...badges);
+  }
   const metadata = [
     ['project', card.repo],
     ['folder', card.cwd ?? 'No folder'],
@@ -337,6 +351,12 @@ const renderDetails = () => {
   $('#details-handover').hidden = card.source !== 'claude' || !card.cwd || !card.activityId || Boolean(board?.missingSources.includes('codex'));
   $('#handover-toggle').disabled = handingOver.has(card.id);
   $('#handover-toggle').ariaBusy = String(handingOver.has(card.id));
+  // The same handover again would open a second Codex chat for unchanged work; clearing the label allows it.
+  for (const option of document.querySelectorAll('#handover-options [data-kind]')) {
+    option.dataset.title ??= option.title;
+    option.disabled = card.handover?.kind === option.dataset.kind;
+    option.title = option.disabled ? `Already handed over ${timeAgo(card.handover.at)}. Clear the label to hand it over again.` : option.dataset.title;
+  }
   // The textarea stays mounted; polling must not replace its value or move the caret while editing.
   const textarea = $('#details-notes');
   if (!noteDrafts.has(card.id) && document.activeElement !== textarea) textarea.value = card.notes ?? '';
@@ -1254,6 +1274,15 @@ const handOver = async (id, kind) => {
     handingOver.delete(id);
     renderDetails();
   }
+};
+
+const clearHandover = async (id) => {
+  try {
+    await send('DELETE', '/api/handover', { id });
+  } catch (error) {
+    showError(`Clearing the handover failed: ${error.message}`);
+  }
+  poll();
 };
 
 const openSession = async (id, target = 'session') => {

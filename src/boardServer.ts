@@ -496,6 +496,11 @@ export const startBoardServer = async ({
         if (!(await stat(card.cwd).catch(() => undefined))?.isDirectory()) return sendJson(res, 400, { error: 'This session\'s folder no longer exists' });
         if (missing.has('codex')) return sendJson(res, 400, { error: 'Codex is not installed' });
         if (handingOver.has(card.id)) return sendJson(res, 409, { error: 'This session is already being handed over' });
+        // The same handover again would only open a second Codex chat for the same work. The board cannot
+        // tell whether that chat was sent, so clearing the label allows it again.
+        if (card.handover?.kind === kind) {
+          return sendJson(res, 409, { error: `This session was already handed over ${kind === 'review' ? 'for review' : 'to continue'}. Clear its label to hand it over again.` });
+        }
         handingOver.add(card.id);
         try {
           const summary = await summarize(kind, sessionId, card.cwd);
@@ -507,6 +512,15 @@ export const startBoardServer = async ({
         inFlight = undefined;
         sendEvent('board');
         console.log(`Handed ${id} over to Codex to ${kind}`);
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (req.method === 'DELETE' && url.pathname === '/api/handover') {
+        const { id } = await readJson(req);
+        if (!isCardId(id)) return sendJson(res, 400, { error: 'invalid handover' });
+        await handovers.set(id);
+        inFlight = undefined;
+        sendEvent('board');
         return sendJson(res, 200, { ok: true });
       }
 

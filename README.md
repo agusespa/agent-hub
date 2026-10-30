@@ -9,7 +9,7 @@ A local macOS app for keeping track of conversations from Claude Desktop and the
 - One card per desktop conversation. Claude cards use the permanent Desktop conversation ID, so resuming or rewinding keeps their identity, placement, tickets and notes.
 - Tickets and notes per session, and Codex titles editable from the board.
 - Open sessions in Codex and project folders in VS Code.
-- Hand a Claude session over to Codex to review or continue it: Claude summarizes it and a new Codex chat opens in the same folder with the prompt ready to send. The card shows the handover until the session is used again.
+- Hand a Claude session over to Codex to review or continue it: Claude summarizes it and a new Codex chat opens in the same folder with the prompt ready to send. The card shows the handover until the session is used again or you clear it, and the same handover cannot be repeated meanwhile.
 - Plan usage and reset times, with alerts for low capacity and unused weekly capacity, an alert level and quiet hours.
 - Concurrent-work warnings for sessions sharing a worktree or branch, including through edits outside their own project, with alerts when they edit the same files and, if chosen in Settings, when they start sharing.
 - **Settings → Config files** lists Claude's and Codex's settings, MCP and instruction files, globally or for a project on the board, and opens the folder that holds them in VS Code.

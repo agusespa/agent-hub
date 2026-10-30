@@ -18,8 +18,14 @@ export class HandoverStore {
     return new Map(Object.entries(parsed?.cards ?? {}).filter((entry): entry is [string, Handover] => isHandover(entry[1])));
   }
 
-  set(cardId: string, handover: Handover): Promise<void> {
-    return updateJsonFile(this.file, async () => ({ cards: Object.fromEntries((await this.read()).set(cardId, handover)) }));
+  /** Without a handover, forgets the card's last one. */
+  set(cardId: string, handover?: Handover): Promise<void> {
+    return updateJsonFile(this.file, async () => {
+      const cards = await this.read();
+      if (handover) cards.set(cardId, handover);
+      else cards.delete(cardId);
+      return { cards: Object.fromEntries(cards) };
+    });
   }
 }
 

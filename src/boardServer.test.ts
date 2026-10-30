@@ -322,6 +322,14 @@ describe('handover', () => {
     expect(url.searchParams.get('prompt')).toContain('on branch `main`.\n\nHandover from that session:\nAdded the route.');
     const board = async () => (await (await fetch(`${server!.url}/api/board`)).json()).cards.find((card: { id: string }) => card.id === 'claude:a');
     expect((await board()).handover).toMatchObject({ kind: 'review' });
+    // The same handover again waits until the label is cleared.
+    expect(await (await request('claude:a')).json()).toEqual({ error: 'This session was already handed over for review. Clear its label to hand it over again.' });
+    const clear = (body: unknown) => fetch(`${server!.url}/api/handover`, {
+      method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    expect((await clear({ id: 'claude:a' })).status).toBe(200);
+    expect((await board()).handover).toBeUndefined();
+    expect((await clear({ id: 42 })).status).toBe(400);
 
     const second = request('claude:a', 'continue');
     await vi.waitFor(() => expect(summarize).toHaveBeenLastCalledWith('continue', 'cli-a', cwd));
@@ -329,6 +337,7 @@ describe('handover', () => {
     expect((await second).status).toBe(200);
     expect(new URL(open.mock.calls[1][0]).searchParams.get('prompt')).toMatch(/^Continue the work/);
     expect((await board()).handover).toMatchObject({ kind: 'continue' });
+    expect((await request('claude:a', 'continue')).status).toBe(409);
     // Using the session again clears it.
     vi.mocked(claudeSource.fetchClaudeSessions).mockResolvedValue([
       { id: 'claude:a', activityId: 'claude:cli-a', source: 'claude', title: 'Project', cwd, liveStatus: null, lastActiveAt: Date.now() + 1000 },

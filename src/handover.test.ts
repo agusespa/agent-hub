@@ -139,6 +139,8 @@ describe('handover record', () => {
       expect(await new HandoverStore(file).read()).toEqual(new Map([
         ['claude:a', { kind: 'continue', at: 3 }], ['claude:b', { kind: 'continue', at: 2 }],
       ]));
+      await store.set('claude:b');
+      expect(await new HandoverStore(file).read()).toEqual(new Map([['claude:a', { kind: 'continue', at: 3 }]]));
       await writeFile(file, JSON.stringify({ cards: { 'claude:a': { kind: 'rewrite', at: 1 }, 'claude:b': { kind: 'review' }, 'claude:c': { kind: 'review', at: 4 } } }));
       expect(await store.read()).toEqual(new Map([['claude:c', { kind: 'review', at: 4 }]]));
     } finally {
