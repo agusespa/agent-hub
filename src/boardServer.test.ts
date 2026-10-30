@@ -291,6 +291,61 @@ describe('opening projects', () => {
   });
 });
 
+describe('handover', () => {
+  it('summarizes a Claude session and opens Codex in its folder', async () => {
+    const cwd = path.join(dataDir, 'project');
+    await mkdir(cwd);
+    vi.spyOn(claudeSource, 'fetchClaudeSessions').mockResolvedValue([
+      { id: 'claude:a', activityId: 'claude:cli-a', aliases: ['claude:cli-a'], source: 'claude', title: 'Project', cwd, branch: 'main', liveStatus: null },
+      { id: 'claude:b', aliases: ['claude:superseded'], source: 'claude', title: 'No current CLI session', cwd, liveStatus: null },
+    ]);
+    vi.spyOn(CodexAppServer.prototype, 'listThreads').mockResolvedValue([
+      { id: 'codex:t', source: 'codex', title: 'Codex', cwd, liveStatus: null, openId: 't' },
+    ]);
+    vi.spyOn(claudeSource, 'fetchClaudeUsage').mockResolvedValue({ source: 'claude', plan: null, windows: [], fetchedAt: 0 });
+    vi.spyOn(CodexAppServer.prototype, 'readUsage').mockResolvedValue({ source: 'codex', plan: null, windows: [], fetchedAt: 0 });
+    const open = vi.spyOn(sessionOpening, 'openInApp').mockResolvedValue();
+    let finish!: (summary: string) => void;
+    const summarize = vi.fn(() => new Promise<string>((resolve) => (finish = resolve)));
+    server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home'), summarize });
+    const request = (id: string, kind?: string) => fetch(`${server!.url}/api/handover`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, kind }),
+    });
+
+    const first = request('claude:a');
+    await vi.waitFor(() => expect(summarize).toHaveBeenCalledExactlyOnceWith('review', 'cli-a', cwd));
+    expect((await request('claude:a')).status).toBe(409);
+    finish('Added the route.');
+    expect((await first).status).toBe(200);
+    const url = new URL(open.mock.calls[0][0]);
+    expect(url.searchParams.get('path')).toBe(cwd);
+    expect(url.searchParams.get('prompt')).toContain('on branch `main`.\n\nHandover from that session:\nAdded the route.');
+    const board = async () => (await (await fetch(`${server!.url}/api/board`)).json()).cards.find((card: { id: string }) => card.id === 'claude:a');
+    expect((await board()).handover).toMatchObject({ kind: 'review' });
+
+    const second = request('claude:a', 'continue');
+    await vi.waitFor(() => expect(summarize).toHaveBeenLastCalledWith('continue', 'cli-a', cwd));
+    finish('Next: add tests.');
+    expect((await second).status).toBe(200);
+    expect(new URL(open.mock.calls[1][0]).searchParams.get('prompt')).toMatch(/^Continue the work/);
+    expect((await board()).handover).toMatchObject({ kind: 'continue' });
+    // Using the session again clears it.
+    vi.mocked(claudeSource.fetchClaudeSessions).mockResolvedValue([
+      { id: 'claude:a', activityId: 'claude:cli-a', source: 'claude', title: 'Project', cwd, liveStatus: null, lastActiveAt: Date.now() + 1000 },
+    ]);
+    expect((await board()).handover).toBeUndefined();
+
+    expect((await request('claude:a', 'rewrite')).status).toBe(400);
+    expect((await request('claude:b')).status).toBe(400);
+    expect((await request('codex:t')).status).toBe(400);
+    expect((await request('claude:unknown')).status).toBe(400);
+    await rm(cwd, { recursive: true });
+    expect(await (await request('claude:a')).json()).toEqual({ error: 'This session\'s folder no longer exists' });
+    expect(summarize).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('config files', () => {
   it('lists config files and opens only the folders that hold them', async () => {
     const home = path.join(dataDir, 'home');

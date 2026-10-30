@@ -9,6 +9,7 @@ A local macOS app for keeping track of conversations from Claude Desktop and the
 - One card per desktop conversation. Claude cards use the permanent Desktop conversation ID, so resuming or rewinding keeps their identity, placement, tickets and notes.
 - Tickets and notes per session, and Codex titles editable from the board.
 - Open sessions in Codex and project folders in VS Code.
+- Hand a Claude session over to Codex to review or continue it: Claude summarizes it and a new Codex chat opens in the same folder with the prompt ready to send. The card shows the handover until the session is used again.
 - Plan usage and reset times, with alerts for low capacity and unused weekly capacity, an alert level and quiet hours.
 - Concurrent-work warnings for sessions sharing a worktree or branch, including through edits outside their own project, with alerts when they edit the same files and, if chosen in Settings, when they start sharing.
 - **Settings → Config files** lists Claude's and Codex's settings, MCP and instruction files, globally or for a project on the board, and opens the folder that holds them in VS Code.
@@ -47,6 +48,6 @@ Notifications need a signed build and macOS permission:
 
 This adds Agent Hub hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`. Trust new Codex hooks with `/hooks` in the Codex CLI; existing sessions may need a restart. Turning it off removes only Agent Hub's hooks. Hooks save session IDs, status, last-prompt times and edited file paths.
 
-Filters, sorting, the view and theme, card positions, tickets, and notes save automatically in `~/Library/Application Support/Agent Hub/`. Existing Claude card state migrates automatically from CLI session IDs to permanent Desktop conversation IDs. Agent Hub does not display or store prompt or transcript text.
+Filters, sorting, the view and theme, card positions, tickets, notes, and handovers save automatically in `~/Library/Application Support/Agent Hub/`. Existing Claude card state migrates automatically from CLI session IDs to permanent Desktop conversation IDs. Agent Hub does not display or store prompt or transcript text; a handover summary goes only into the Codex prompt.
 
 Sessions leave the board after 45 days without a prompt (or since session start if none was recorded), unless running, moved out of Parked, or given a ticket or notes. **Settings → Keep idle sessions** changes this to 2 weeks or 90 days. Sessions started in your home folder are not shown, as they belong to no project.

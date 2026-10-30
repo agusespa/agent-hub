@@ -73,6 +73,15 @@ export interface PlanUsage {
   error?: string;
 }
 
+/** Codex either reviews a Claude session's work or takes it over. */
+export type HandoverKind = 'review' | 'continue';
+
+/** The last time the user handed a session over to Codex from the board. */
+export interface Handover {
+  kind: HandoverKind;
+  at: number;
+}
+
 export interface Card extends SessionRecord {
   repo: string;
   /** The ticket the user set on the board, such as PROJ-1234. */
@@ -82,4 +91,6 @@ export interface Card extends SessionRecord {
   column: ColumnId;
   /** When the user last sent the session a prompt, as the board's hooks saw it. */
   lastPromptAt?: number;
+  /** The last handover, until the session is used again. */
+  handover?: Handover;
 }

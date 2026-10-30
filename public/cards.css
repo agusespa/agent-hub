@@ -153,6 +153,17 @@
   background: var(--idle);
 }
 
+.handover-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--codex);
+  white-space: nowrap;
+}
+
+.handover-tag::before {
+  content: '→ ';
+}
+
 .time {
   flex-shrink: 0;
   margin-left: auto;

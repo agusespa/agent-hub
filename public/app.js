@@ -19,6 +19,8 @@ let repoHues = new Map();
 /** Notes are persisted by the local app; only edits awaiting autosave live in memory. */
 const noteDrafts = new Map();
 let selectedCard = null;
+/** Cards whose handover summary is being written; the server refuses a second one meanwhile. */
+const handingOver = new Set();
 /** The title being edited in place: its card and the text to restore on Escape. */
 let titleEdit = null;
 let savingTitle = null;
@@ -72,6 +74,14 @@ const el = (tag, className, text) => {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+};
+
+/** A card handed over from the board, until its session is used again. */
+const HANDOVER_LABELS = { review: 'Codex review', continue: 'In Codex' };
+const handoverTag = ({ kind, at }, text = HANDOVER_LABELS[kind]) => {
+  const tag = el('span', 'handover-tag', text);
+  tag.title = `Handed over to Codex ${kind === 'review' ? 'for review' : 'to continue'} ${new Date(at).toLocaleString()}. Shown until the session is used again.`;
+  return tag;
 };
 
 const timeAgo = (ms) => {
@@ -304,6 +314,7 @@ const renderDetails = () => {
   }
   const badges = [el('span', `badge badge-${card.source}`, SOURCE_LABELS[card.source])];
   if (card.liveStatus) badges.push(el('span', `status status-${card.liveStatus}`, STATUS_LABELS[card.liveStatus]));
+  if (card.handover) badges.push(handoverTag(card.handover, `${HANDOVER_LABELS[card.handover.kind]} · ${timeAgo(card.handover.at)}`));
   $('#details-badges').replaceChildren(...badges);
   const metadata = [
     ['project', card.repo],
@@ -323,6 +334,9 @@ const renderDetails = () => {
   sessionButton.hidden = !card.openId;
   sessionButton.textContent = `Open in ${SOURCE_LABELS[card.source]} ↗`;
   $('#details-editor').hidden = !card.cwd;
+  $('#details-handover').hidden = card.source !== 'claude' || !card.cwd || !card.activityId || Boolean(board?.missingSources.includes('codex'));
+  $('#handover-toggle').disabled = handingOver.has(card.id);
+  $('#handover-toggle').ariaBusy = String(handingOver.has(card.id));
   // The textarea stays mounted; polling must not replace its value or move the caret while editing.
   const textarea = $('#details-notes');
   if (!noteDrafts.has(card.id) && document.activeElement !== textarea) textarea.value = card.notes ?? '';
@@ -409,6 +423,13 @@ $('#details-title').addEventListener('blur', (event) => {
 $('#details-close').addEventListener('click', closeDetails);
 $('#details-session').addEventListener('click', () => selectedCard && openSession(selectedCard.id));
 $('#details-editor').addEventListener('click', () => selectedCard && openSession(selectedCard.id, 'vscode'));
+for (const option of document.querySelectorAll('#handover-options [data-kind]')) {
+  option.addEventListener('click', () => {
+    // Focus leaves the menu, so it closes once the pointer does too.
+    option.blur();
+    if (selectedCard) handOver(selectedCard.id, option.dataset.kind);
+  });
+}
 $('#notes-retry').addEventListener('click', () => selectedCard && saveNotes(selectedCard.id));
 $('#details-notes').addEventListener('input', (event) => {
   if (!selectedCard) return;
@@ -582,6 +603,7 @@ const renderCard = (card) => {
   if (card.liveStatus) {
     tags.append(el('span', `status status-${card.liveStatus}`, STATUS_LABELS[card.liveStatus]));
   }
+  if (card.handover) tags.append(handoverTag(card.handover));
   if ((noteDrafts.get(card.id)?.text ?? card.notes ?? '').trim()) {
     const notes = el('span', 'notes-indicator', '▤');
     notes.title = 'Has notes';
@@ -1219,6 +1241,19 @@ const place = async (id, column, before) => {
     showError(`Saving failed: ${error.message}`);
   }
   poll();
+};
+
+const handOver = async (id, kind) => {
+  handingOver.add(id);
+  renderDetails();
+  try {
+    await send('POST', '/api/handover', { id, kind });
+  } catch (error) {
+    showError(`Handing over failed: ${error.message}`);
+  } finally {
+    handingOver.delete(id);
+    renderDetails();
+  }
 };
 
 const openSession = async (id, target = 'session') => {

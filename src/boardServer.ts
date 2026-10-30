@@ -1,5 +1,5 @@
 import { watch } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import http from 'node:http';
 import { homedir } from 'node:os';
 import type { AddressInfo } from 'node:net';
@@ -10,6 +10,7 @@ import { PROJECT_ROOT } from './app.js';
 import { configFiles, configFolders } from './configFiles.js';
 import { ConflictAlerts, readWorktree, sessionConflicts, type SessionConflict } from './conflicts.js';
 import { FILE_ACTIVITY_DIR, FileActivityStore } from './fileActivity.js';
+import { claudeResumeId, codexNewThreadUrl, currentHandover, handoverPrompt, HandoverStore, isHandoverKind, summarizeClaudeSession, type HandoverKind } from './handover.js';
 import { repoNameForCwd } from './git.js';
 import { HookInstaller, type HookState } from './hookInstall.js';
 import { HOOK_STATUS_DIR, HookStatusMerge, HookStatusStore, lastEventBySource } from './hookStatus.js';
@@ -144,7 +145,7 @@ export interface BoardServer {
  * `notifications` sends a test notification and opens macOS's notification settings, for the desktop app.
  * With `desktopToken`, only requests carrying it in an `x-agent-hub-token` header get an answer, which
  * the desktop app adds to its window's requests; a browser opening the port gets a page saying so.
- * `claudeBin`, `codexBin` and `home` (where the tools' hook configs are) are only changed by tests.
+ * `claudeBin`, `codexBin`, `home` (where the tools' hook configs are) and `summarize` are only changed by tests.
  */
 export const startBoardServer = async ({
   dataDir,
@@ -158,6 +159,7 @@ export const startBoardServer = async ({
   claudeBin = CLAUDE_BIN,
   codexBin = CODEX_BIN,
   home,
+  summarize = (kind, sessionId, cwd) => summarizeClaudeSession(claudeBin, kind, sessionId, cwd),
 }: {
   dataDir: string;
   port: number;
@@ -170,10 +172,12 @@ export const startBoardServer = async ({
   claudeBin?: string;
   codexBin?: string;
   home?: string;
+  summarize?: (kind: HandoverKind, sessionId: string, cwd: string) => Promise<string>;
 }): Promise<BoardServer> => {
   const placements = new PlacementStore(path.join(dataDir, 'placements.json'));
   const tickets = new TicketStore(path.join(dataDir, 'tickets.json'));
   const notes = new NotesStore(path.join(dataDir, 'notes.json'));
+  const handovers = new HandoverStore(path.join(dataDir, 'handovers.json'));
   const view = new ViewStore(path.join(dataDir, 'view.json'));
   const lastPrompts = new LastPromptStore(path.join(dataDir, LAST_PROMPT_DIR), path.join(dataDir, 'last-prompts.json'));
   const codex = new CodexAppServer(codexBin);
@@ -201,6 +205,8 @@ export const startBoardServer = async ({
   const missing = new Set<Source>();
   const conflictAlerts = new ConflictAlerts();
   const fileActivity = new FileActivityStore(path.join(dataDir, FILE_ACTIVITY_DIR));
+  // Cards whose summary is being written, so a second click does not start another.
+  const handingOver = new Set<string>();
 
   // Usage is checked for alerts on its own timer, since pages only poll while the board is
   // open. Each check reads the last answers; the reads it starts show in the next one.
@@ -233,8 +239,8 @@ export const startBoardServer = async ({
       view.read(),
     ]);
     await migrateBoardState(dataDir, claude);
-    const [placed, keys, prompted, savedNotes] = await Promise.all([
-      placements.read(), tickets.read(), lastPrompts.read(Date.now(), sessionAliases(claude)), notes.read(),
+    const [placed, keys, prompted, savedNotes, handedOver] = await Promise.all([
+      placements.read(), tickets.read(), lastPrompts.read(Date.now(), sessionAliases(claude)), notes.read(), handovers.read(),
     ]);
     if (missing.size === Object.keys(SOURCE_NAMES).length) {
       errors.push(`Neither Claude Code nor Codex was found: no \`${claudeBin}\` on PATH and no ${codexBin}. Install one.`);
@@ -245,15 +251,17 @@ export const startBoardServer = async ({
       isOnBoard(record, { placement: placed.columns.get(record.id), ticket: keys.get(record.id), notes: savedNotes.get(record.id), lastPromptAt: prompted.get(record.id) }, Date.now(), savedView.keepDays * DAY_MS),
     );
     const cards = await Promise.all(
-      records.map(async (record) =>
-        toCard(record, {
+      records.map(async (record) => {
+        const card = toCard(record, {
           repo: record.repoHint ?? (await repoNameForCwd(record.cwd)),
           placement: placed.columns.get(record.id),
           ticket: keys.get(record.id),
           notes: savedNotes.get(record.id),
           lastPromptAt: prompted.get(record.id),
-        }),
-      ),
+        });
+        const handover = currentHandover(handedOver.get(record.id), card);
+        return handover ? { ...card, handover } : card;
+      }),
     );
     const started = cardsStartedWorking(cards, lastStatuses, placed.columns);
     for (const card of cards) lastStatuses.set(card.id, card.liveStatus);
@@ -474,6 +482,31 @@ export const startBoardServer = async ({
         if (!link) return sendJson(res, 400, { error: target === 'vscode' ? 'This session has no existing project folder' : 'This session cannot be opened from the board' });
         await openInApp(link);
         console.log(`Opened ${id}`);
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/handover') {
+        const { id, kind = 'review' } = await readJson(req);
+        if (!isHandoverKind(kind)) return sendJson(res, 400, { error: 'invalid handover' });
+        // Only sessions on the board, so the page cannot open Codex in arbitrary folders.
+        const card = isCardId(id) ? (await getBoard()).cards.find((c) => c.id === id) : undefined;
+        const sessionId = card && claudeResumeId(card);
+        if (!card?.cwd || !sessionId) return sendJson(res, 400, { error: 'Only Claude sessions with a project folder can be handed over' });
+        // A worktree is often removed once its work is merged; Claude cannot resume there, nor Codex open it.
+        if (!(await stat(card.cwd).catch(() => undefined))?.isDirectory()) return sendJson(res, 400, { error: 'This session\'s folder no longer exists' });
+        if (missing.has('codex')) return sendJson(res, 400, { error: 'Codex is not installed' });
+        if (handingOver.has(card.id)) return sendJson(res, 409, { error: 'This session is already being handed over' });
+        handingOver.add(card.id);
+        try {
+          const summary = await summarize(kind, sessionId, card.cwd);
+          await openInApp(codexNewThreadUrl(handoverPrompt(kind, summary, card), card.cwd));
+        } finally {
+          handingOver.delete(card.id);
+        }
+        await handovers.set(card.id, { kind, at: Date.now() });
+        inFlight = undefined;
+        sendEvent('board');
+        console.log(`Handed ${id} over to Codex to ${kind}`);
         return sendJson(res, 200, { ok: true });
       }
 

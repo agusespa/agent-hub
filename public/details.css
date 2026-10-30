@@ -167,13 +167,76 @@
   color: var(--text);
   font: inherit;
   font-size: 12px;
+  text-align: right;
   white-space: nowrap;
   cursor: pointer;
 }
 
-.details-action:hover {
+.details-action:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.details-action:disabled {
+  color: var(--muted);
+  cursor: progress;
+}
+
+/* Hovering or focusing the button shows its options, which sit flush below it so the pointer can cross. */
+.handover {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.handover-options {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  right: 0;
+  display: none;
+  flex-direction: column;
+  min-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
+}
+
+.handover:is(:hover, :focus-within):not(:has(#handover-toggle:disabled)) .handover-options {
+  display: flex;
+}
+
+.handover-options button {
+  padding: 5px 9px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: right;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.handover-options button:is(:hover, :focus-visible) {
+  background: var(--column);
+  color: var(--accent);
+}
+
+/* Both labels share one cell, so the button keeps the width of the longer one while it works. */
+#handover-toggle {
+  display: grid;
+  justify-items: end;
+}
+
+#handover-toggle > span {
+  grid-area: 1 / 1;
+}
+
+#handover-toggle[aria-busy='true'] > span:first-child,
+#handover-toggle:not([aria-busy='true']) > span:last-child {
+  visibility: hidden;
 }
 
 .notes-heading label {

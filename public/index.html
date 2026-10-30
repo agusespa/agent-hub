@@ -139,6 +139,13 @@
         <div class="details-actions">
           <button id="details-session" class="details-action" type="button"></button>
           <button id="details-editor" class="details-action" type="button" title="Open project in VS Code">Open in editor ↗</button>
+          <div id="details-handover" class="handover">
+            <button id="handover-toggle" class="details-action" type="button" aria-haspopup="menu" aria-controls="handover-options"><span>Hand over ▾</span><span>Summarizing…</span></button>
+            <div id="handover-options" class="handover-options" role="menu">
+              <button type="button" role="menuitem" data-kind="review" title="Claude summarizes this session, then a new Codex chat opens in its folder with a review prompt to send">Review in Codex ↗</button>
+              <button type="button" role="menuitem" data-kind="continue" title="Claude summarizes where this session stands, then a new Codex chat opens in its folder with a prompt to carry on">Continue in Codex ↗</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="notes-heading">
