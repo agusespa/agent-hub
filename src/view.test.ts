@@ -38,10 +38,19 @@ describe('file-backed view preferences', () => {
       hiddenRepos: ['project'], hiddenSources: [], hiddenTickets: [], oldestFirst: ['done'], layout: 'kanban', theme: 'system', usageAlerts: true, closePercent: 90, spareAlerts: true, sharedAlerts: false, conflictAlerts: true, keepDays: 45, quietHours: false, quietFrom: 18, quietTo: 8, quietWeekends: false,
     });
     expect(isViewPatch({ hiddenRepos: [], oldestFirst: ['parked', 'done'] })).toBe(true);
-    expect(isViewPatch({ layout: 'project', theme: 'light', usageAlerts: false, keepDays: 90, closePercent: 80, quietFrom: 0, quietTo: 23 })).toBe(true);
-    for (const value of [null, [], {}, { unexpected: [] }, { hiddenRepos: 'project' }, { hiddenRepos: [1] }, { oldestFirst: ['doing'] }, { layout: 'ticket' }, { layout: ['project'] }, { theme: 'sepia' }, { usageAlerts: 'off' }, { keepDays: 30 }, { keepDays: '45' }, { closePercent: 85 }, { quietFrom: 24 }, { quietTo: 7.5 }]) {
+    expect(isViewPatch({ layout: 'project', theme: 'light', usageAlerts: false, keepDays: 90, closePercent: 85, quietFrom: 0, quietTo: 23 })).toBe(true);
+    for (const value of [null, [], {}, { unexpected: [] }, { hiddenRepos: 'project' }, { hiddenRepos: [1] }, { oldestFirst: ['doing'] }, { layout: 'ticket' }, { layout: ['project'] }, { theme: 'sepia' }, { usageAlerts: 'off' }, { keepDays: 30 }, { keepDays: '45' }, { closePercent: 80 }, { quietFrom: 24 }, { quietTo: 7.5 }]) {
       expect(isViewPatch(value)).toBe(false);
     }
+  });
+
+  it('carries the old 80% alert setting over to 85% and preserves it on updates', async () => {
+    const file = path.join(dir, 'view.json');
+    await writeFile(file, JSON.stringify({ closePercent: 80, theme: 'dark' }));
+    const view = new ViewStore(file);
+    expect(await view.read()).toMatchObject({ closePercent: 85, theme: 'dark' });
+    await view.update({ theme: 'light' });
+    expect(await new ViewStore(file).read()).toMatchObject({ closePercent: 85, theme: 'light' });
   });
 
   it.each(['constructor', 'toString', 'hasOwnProperty', '__proto__'])('rejects the unexpected key %s without throwing', (key) => {

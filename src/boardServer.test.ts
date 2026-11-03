@@ -213,7 +213,7 @@ describe('usage alerts', () => {
     // A window around now that still holds if the hour turns during the test.
     const hourNow = new Date().getHours();
     await writeFile(path.join(dataDir, 'view.json'), JSON.stringify({
-      closePercent: 80, spareAlerts: false, quietHours: true, quietFrom: (hourNow + 23) % 24, quietTo: (hourNow + 2) % 24, quietWeekends: false,
+      closePercent: 85, spareAlerts: false, quietHours: true, quietFrom: (hourNow + 23) % 24, quietTo: (hourNow + 2) % 24, quietWeekends: false,
     }));
     const notify = vi.fn();
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });

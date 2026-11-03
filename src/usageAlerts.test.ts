@@ -23,7 +23,7 @@ describe('usageAlerts', () => {
 
   it('alerts at the level set in Settings instead', () => {
     const at = (closePercent: number) => usageAlerts(usage({ label: '5h', usedPercent: 85, resetsAt: NOW + HOUR }), NOW, closePercent);
-    expect(at(80).map((alert) => alert.kind)).toEqual(['close']);
+    expect(at(85).map((alert) => alert.kind)).toEqual(['close']);
     expect(at(90)).toEqual([]);
   });
 

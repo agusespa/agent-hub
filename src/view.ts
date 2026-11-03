@@ -16,7 +16,7 @@ export interface ViewSettings {
   theme: Theme;
   /** Desktop alerts when a limit is `closePercent` used. */
   usageAlerts: boolean;
-  closePercent: 80 | 90 | 95;
+  closePercent: 85 | 90 | 95;
   /** Desktop alerts when a weekly limit is about to reset with room left. */
   spareAlerts: boolean;
   /** Desktop alerts when two working sessions share a worktree or branch. */
@@ -46,7 +46,7 @@ const CHOICES = {
   layout: ['kanban', 'project'],
   theme: ['system', 'light', 'dark'],
   usageAlerts: [true, false],
-  closePercent: [90, 80, 95],
+  closePercent: [90, 85, 95],
   spareAlerts: [true, false],
   sharedAlerts: [false, true],
   conflictAlerts: [true, false],
@@ -81,8 +81,12 @@ export class ViewStore {
       const values = parsed?.[key];
       return [key, Array.isArray(values) ? [...new Set(values.filter((value) => isEntry(key, value)))].slice(0, 2000) : []];
     })) as Pick<ViewSettings, ListKey>;
-    const choices = Object.fromEntries(Object.entries(CHOICES).map(([key, values]) =>
-      [key, isChoice(key as ChoiceKey, parsed?.[key as ChoiceKey]) ? parsed![key as ChoiceKey] : values[0]]));
+    const choices = Object.fromEntries(Object.entries(CHOICES).map(([key, values]) => {
+      let value = parsed?.[key as ChoiceKey];
+      // Carry the former 80% alert choice over to its replacement.
+      if (key === 'closePercent' && value === 80) value = 85;
+      return [key, isChoice(key as ChoiceKey, value) ? value : values[0]];
+    }));
     return { ...lists, ...choices } as ViewSettings;
   }
 

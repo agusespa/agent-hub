@@ -739,25 +739,24 @@ const renderUsageIcon = ({ state, text }) => {
   return icon;
 };
 
-/** Each source's headline limit, for the top bar; the full figures open below it. */
+/** Each source's 5h capacity, for the top bar; the full figures open below it. */
 const renderUsageCompact = (usage) => {
   if (!usage.length) return [el('span', 'usage-note', 'Usage')];
   return usage.map((source) => {
     const part = el('span', 'usage-compact-source');
     part.append(el('span', `badge badge-${source.source}`, SOURCE_LABELS[source.source]));
     const shown = headlineWindow(source.windows);
-    if (!shown) {
-      part.title = `No usage data from ${SOURCE_LABELS[source.source]}`;
-      part.prepend(renderUsageIcon(usageState(source)));
-      part.append(el('span', 'usage-left usage-placeholder', '–%'));
-      return part;
-    }
     const state = usageState(source);
     part.prepend(renderUsageIcon(state));
+    if (!shown) {
+      part.title = `No 5h usage data from ${SOURCE_LABELS[source.source]}\n${state.text}`;
+      part.append(el('span', 'usage-left usage-placeholder', '–'));
+      return part;
+    }
     const used = Math.min(100, Math.max(0, shown.usedPercent));
-    part.title = `${shown.label} limit: ${Math.round(100 - used)}% left\n${state.text}`;
+    part.title = `${shown.label} limit: ${Math.round(used)}% used\n${state.text}`;
     part.classList.add(`level-${usageLevel(used)}`);
-    part.append(el('span', 'usage-left', `${Math.round(100 - used)}%`));
+    part.append(el('span', 'usage-left', `${Math.round(used)}%`));
     return part;
   });
 };

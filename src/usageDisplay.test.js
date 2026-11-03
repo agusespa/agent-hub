@@ -6,14 +6,19 @@ const now = 1_800_000_000_000;
 const window = (label, usedPercent, resetsAt) => ({ label, usedPercent, resetsAt });
 
 describe('usage display', () => {
-  it('uses the 5h headline unless another limit is nearly used up', () => {
+  it('keeps the 5h headline when other limits are nearly or fully used up', () => {
     const fiveHour = window('5h', 30);
     const weekly = window('Weekly', 80);
     const model = window('Weekly Opus', 95);
     expect(headlineWindow([fiveHour, weekly])).toBe(fiveHour);
-    expect(headlineWindow([fiveHour, weekly, model])).toBe(model);
-    expect(headlineWindow([weekly, model])).toBe(model);
-    expect(headlineWindow([weekly])).toBe(weekly);
+    expect(headlineWindow([fiveHour, weekly, model])).toBe(fiveHour);
+    expect(headlineWindow([window('Weekly', 100), fiveHour])).toBe(fiveHour);
+    expect(usageState({ windows: [fiveHour, weekly, model] }, now)).toEqual({ state: 'low', text: 'Running low: Weekly 20% left, Weekly Opus 5% left' });
+  });
+
+  it('has no headline when the main 5h limit is unavailable', () => {
+    expect(headlineWindow([window('Weekly', 100), window('5h Spark', 20)])).toBeNull();
+    expect(headlineWindow([window('Weekly', 80)])).toBeNull();
     expect(headlineWindow([])).toBeNull();
   });
 

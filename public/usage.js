@@ -1,16 +1,7 @@
 export const usageLevel = (used) => (used >= 90 ? 'high' : used >= 70 ? 'mid' : 'low');
 
-const mostUsed = (windows) => windows.reduce((most, window) => (!most || window.usedPercent > most.usedPercent ? window : most), null);
-
-/**
- * The limit to show in the top bar: the 5h one, unless a longer limit is nearly used up
- * (the meter's red level), since that one would then stop the session first.
- */
-export const headlineWindow = (windows) => {
-  const fiveHour = windows.find((window) => window.label === '5h');
-  const nearlyUsed = mostUsed(windows.filter((window) => window !== fiveHour && window.usedPercent >= 90));
-  return nearlyUsed ?? fiveHour ?? mostUsed(windows);
-};
+/** The top bar always shows the main 5h limit; other limits inform the status icon. */
+export const headlineWindow = (windows) => windows.find((window) => window.label === '5h') ?? null;
 
 const DAY_MS = 24 * 60 * 60_000;
 
