@@ -137,11 +137,7 @@ export class HookInstaller {
     if (on) await this.writeScript();
     for (const source of SOURCES) {
       if (!(await exists(path.dirname(this.files[source])))) continue;
-      // A symlinked config, as from a dotfiles repo, is written where it points.
-      const file = await realpath(this.files[source]).catch(() => this.files[source]);
-      const config = await this.readConfig(file);
-      const next = on ? withBoardHooks(config, source, path.join(this.dataDir, WRAPPER)) : withoutBoardHooks(config);
-      if (JSON.stringify(next) !== JSON.stringify(config)) await writeJsonFile(file, next);
+      await this.updateConfig(source, on);
     }
     return this.state();
   }
@@ -155,11 +151,16 @@ export class HookInstaller {
     const states = await this.state();
     for (const source of SOURCES) {
       if (states[source] !== 'on') continue;
-      const file = await realpath(this.files[source]).catch(() => this.files[source]);
-      const config = await this.readConfig(file);
-      const next = withBoardHooks(config, source, path.join(this.dataDir, WRAPPER));
-      if (JSON.stringify(next) !== JSON.stringify(config)) await writeJsonFile(file, next);
+      await this.updateConfig(source, true);
     }
+  }
+
+  private async updateConfig(source: Source, on: boolean): Promise<void> {
+    // A symlinked config, as from a dotfiles repo, is written where it points.
+    const file = await realpath(this.files[source]).catch(() => this.files[source]);
+    const config = await this.readConfig(file);
+    const next = on ? withBoardHooks(config, source, path.join(this.dataDir, WRAPPER)) : withoutBoardHooks(config);
+    if (JSON.stringify(next) !== JSON.stringify(config)) await writeJsonFile(file, next);
   }
 
   /** Writes the wrapper and the hook script from this copy of the app, so they follow its updates. */

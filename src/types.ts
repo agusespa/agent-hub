@@ -1,6 +1,6 @@
 export type Source = 'claude' | 'codex';
 
-/** Live state of a session's process. Only Claude reports it; Codex sessions are always `null`. */
+/** Live state from Claude's process metadata or the board's hooks; null when unknown. */
 export type LiveStatus = 'working' | 'waiting' | 'idle';
 
 /**

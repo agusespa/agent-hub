@@ -238,7 +238,14 @@ describe('desktop only', () => {
     expect(await page.text()).toMatch(/desktop app/);
     expect((await fetch(`${server.url}/api/board`)).status).toBe(403);
     expect((await fetch(`${server.url}/app.js`, { headers: { 'x-agent-hub-token': 'wrong' } })).status).toBe(403);
-    expect((await fetch(server.url, { headers: { 'x-agent-hub-token': 'secret' } })).status).toBe(200);
+    const headers = { 'x-agent-hub-token': 'secret' };
+    const desktopPage = await fetch(server.url, { headers });
+    expect(desktopPage.status).toBe(200);
+    expect(await desktopPage.text()).toContain('<script type="module" src="/app.js"></script>');
+    const usageModule = await fetch(`${server.url}/usage.js`, { headers });
+    expect(usageModule.status).toBe(200);
+    expect(usageModule.headers.get('content-type')).toContain('text/javascript');
+    expect(await usageModule.text()).toContain('export const usageState');
   });
 });
 

@@ -1,3 +1,5 @@
+import { headlineWindow, usageLevel, usageState } from './usage.js';
+
 const $ = (selector) => document.querySelector(selector);
 
 const STATUS_LABELS = { working: 'Working', waiting: 'Awaiting input', idle: 'Idle' };
@@ -686,8 +688,6 @@ const renderSummary = (cards) => {
   $('#summary').replaceChildren(...parts);
 };
 
-const usageLevel = (used) => (used >= 90 ? 'high' : used >= 70 ? 'mid' : 'low');
-
 const renderUsageWindow = (window, fetchedAt) => {
   const used = Math.min(100, Math.max(0, window.usedPercent));
   const node = el('div', `usage-window level-${usageLevel(used)}`);
@@ -718,41 +718,6 @@ const usageBySource = () =>
   Object.keys(SOURCE_LABELS)
     .filter((source) => !board.missingSources?.includes(source))
     .map((source) => board.usage?.find((usage) => usage.source === source) ?? { source, plan: null, windows: [], error: null });
-
-const mostUsed = (windows) => windows.reduce((most, window) => (!most || window.usedPercent > most.usedPercent ? window : most), null);
-
-/**
- * The limit to show in the top bar: the 5h one, unless a longer limit is nearly used up
- * (the meter's red level), since that one would then stop the session first.
- */
-const headlineWindow = (windows) => {
-  const fiveHour = windows.find((window) => window.label === '5h');
-  const nearlyUsed = mostUsed(windows.filter((window) => window !== fiveHour && window.usedPercent >= 90));
-  return nearlyUsed ?? fiveHour ?? mostUsed(windows);
-};
-
-const DAY_MS = 24 * 60 * 60_000;
-
-/** Why a source has no figures: its read failed, it has no plan limits, or it has not answered yet. */
-const noUsageReason = (source) => source.error ?? (source.fetchedAt ? 'No limits reported' : 'No usage data yet');
-
-/**
- * One state for a source's limits, worst first: a limit used up, one running low (the
- * meter's yellow or red), a weekly limit with room left that resets within a day (so
- * it is worth spending), or all fine. Unknown, with the reason, when there are no figures.
- */
-const usageState = ({ windows, ...source }) => {
-  if (!windows.length) return { state: 'unknown', text: noUsageReason(source) };
-  const out = windows.filter((window) => window.usedPercent >= 100);
-  if (out.length) return { state: 'out', text: `Used up: ${out.map((window) => window.label).join(', ')}` };
-  const low = windows.filter((window) => usageLevel(window.usedPercent) !== 'low');
-  if (low.length) return { state: 'low', text: `Running low: ${low.map((window) => `${window.label} ${Math.round(100 - window.usedPercent)}% left`).join(', ')}` };
-  const spare = windows.filter((window) => window.label.startsWith('Weekly') && window.resetsAt && window.resetsAt - Date.now() < DAY_MS);
-  if (spare.length) {
-    return { state: 'spare', text: 'Use it before it resets' };
-  }
-  return { state: 'ok', text: 'All limits fine' };
-};
 
 /** A dot, its glyph and colour set by the state's class. */
 const renderUsageIcon = ({ state, text }) => {
@@ -853,7 +818,7 @@ const renderHooks = () => {
     ? events
     : [
         el('p', '', 'Hooks tell the board as soon as a session starts working, needs you or stops, and give Codex sessions a status, which the board cannot read otherwise.'),
-        el('p', 'usage-note', `Adds the board's hooks to ${sources.map((source) => HOOK_CONFIGS[source]).join(' and ')}. They pass on only the session id: prompts, tool details and transcripts are not read.`),
+        el('p', 'usage-note', `Adds the board's hooks to ${sources.map((source) => HOOK_CONFIGS[source]).join(' and ')}. They save session IDs, status, last-prompt times and edited file paths. Prompts, file contents and transcripts are never saved.`),
         ...events,
       ];
   section.querySelector('.hooks-panel').replaceChildren(...lines);

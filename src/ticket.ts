@@ -1,4 +1,4 @@
-import { readJsonFile, updateJsonFile } from './jsonFile.js';
+import { CardStore } from './cardStore.js';
 
 /** A ticket ID such as PROJ-1234, in upper case as the page saves it. */
 export const isTicketId = (value: unknown): value is string => typeof value === 'string' && /^[A-Z][A-Z0-9]{1,9}-\d{1,7}$/.test(value);
@@ -9,21 +9,11 @@ export const isTicketId = (value: unknown): value is string => typeof value === 
  * the browser and desktop versions can run side by side. Keys stay saved after a
  * session drops off the board, and show again if it comes back.
  */
-export class TicketStore {
-  constructor(private readonly file: string) {}
-
-  async read(): Promise<Map<string, string>> {
-    const parsed = (await readJsonFile(this.file)) as { cards?: Record<string, unknown> } | undefined;
-    return new Map(Object.entries(parsed?.cards ?? {}).filter((entry): entry is [string, string] => isTicketId(entry[1])));
-  }
+export class TicketStore extends CardStore<string> {
+  protected isValue = isTicketId;
 
   /** Sets a card's key; null removes it. */
   set(cardId: string, key: string | null): Promise<void> {
-    return updateJsonFile(this.file, async () => {
-      const cards = await this.read();
-      if (key) cards.set(cardId, key);
-      else cards.delete(cardId);
-      return { cards: Object.fromEntries(cards) };
-    });
+    return this.setValue(cardId, key || undefined);
   }
 }

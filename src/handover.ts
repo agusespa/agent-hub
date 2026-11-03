@@ -1,5 +1,5 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { readJsonFile, updateJsonFile } from './jsonFile.js';
+import { CardStore } from './cardStore.js';
 import type { Card, Handover, HandoverKind } from './types.js';
 
 export type { HandoverKind } from './types.js';
@@ -10,22 +10,12 @@ const isHandover = (value: unknown): value is Handover =>
   isHandoverKind((value as Handover | null)?.kind) && Number.isFinite((value as Handover).at);
 
 /** Each card's last handover, kept by the board; never the summary or prompt. */
-export class HandoverStore {
-  constructor(private readonly file: string) {}
-
-  async read(): Promise<Map<string, Handover>> {
-    const parsed = (await readJsonFile(this.file)) as { cards?: Record<string, unknown> } | undefined;
-    return new Map(Object.entries(parsed?.cards ?? {}).filter((entry): entry is [string, Handover] => isHandover(entry[1])));
-  }
+export class HandoverStore extends CardStore<Handover> {
+  protected isValue = isHandover;
 
   /** Without a handover, forgets the card's last one. */
   set(cardId: string, handover?: Handover): Promise<void> {
-    return updateJsonFile(this.file, async () => {
-      const cards = await this.read();
-      if (handover) cards.set(cardId, handover);
-      else cards.delete(cardId);
-      return { cards: Object.fromEntries(cards) };
-    });
+    return this.setValue(cardId, handover);
   }
 }
 
