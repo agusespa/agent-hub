@@ -308,6 +308,11 @@ const saveNotes = (id) => {
 // Electron calls this before closing its window, while the local file-writing server is still running.
 window.agentHub = {
   async flushPendingChanges() {
+    // Native close can run before the focused title's blur event.
+    if (titleEdit) {
+      saveTitleEdit();
+      $('#details-title').blur();
+    }
     if (savingTitle && !(await savingTitle)) return false;
     while (noteDrafts.size || savingView || Object.keys(pendingView).length) {
       const saved = await Promise.all([...noteDrafts.keys()].map(saveNotes).concat(flushView()));
@@ -410,7 +415,10 @@ const closeDetails = () => {
 };
 
 const saveTitle = (id, title, before) => {
-  savingTitle = (async () => {
+  const previous = savingTitle;
+  const saving = (async () => {
+    // Keep renames in input order, and let close wait for the latest queued one.
+    if (previous) await previous;
     try {
       const saved = await send('PUT', '/api/title', { id, title });
       const card = board?.cards.find((candidate) => candidate.id === id);
@@ -418,14 +426,15 @@ const saveTitle = (id, title, before) => {
       if (selectedCard?.id === id) selectedCard.title = saved.title;
       return true;
     } catch (error) {
-      if (selectedCard?.id === id && !titleEdit) $('#details-title').textContent = before;
+      if (savingTitle === saving && selectedCard?.id === id && !titleEdit) $('#details-title').textContent = before;
       showError(`Renaming session failed: ${error.message}`);
       return false;
     } finally {
-      savingTitle = null;
+      if (savingTitle === saving) savingTitle = null;
       render();
     }
   })();
+  savingTitle = saving;
 };
 
 /** Enter or clicking away saves; Escape restores the title. Empty or unchanged titles do nothing. */
@@ -446,23 +455,25 @@ $('#details-title').addEventListener('keydown', (event) => {
     event.target.blur();
   }
 });
-$('#details-title').addEventListener('blur', (event) => {
+const saveTitleEdit = () => {
   if (!titleEdit) return;
+  const input = $('#details-title');
   const { id, before } = titleEdit;
   titleEdit = null;
-  const title = event.target.textContent.replace(/\s+/g, ' ').trim();
+  const title = input.textContent.replace(/\s+/g, ' ').trim();
   if (!title || title === before) {
-    event.target.textContent = before;
+    input.textContent = before;
     return;
   }
   if (title.length > 200 || /[\p{Cc}\p{Cf}]/u.test(title)) {
-    event.target.textContent = before;
+    input.textContent = before;
     showError('Titles can be up to 200 characters, without control characters');
     return;
   }
-  event.target.textContent = title;
+  input.textContent = title;
   saveTitle(id, title, before);
-});
+};
+$('#details-title').addEventListener('blur', saveTitleEdit);
 
 $('#details-close').addEventListener('click', closeDetails);
 $('#details-session').addEventListener('click', () => selectedCard && openSession(selectedCard.id));
