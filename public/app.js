@@ -663,7 +663,7 @@ const renderCard = (card) => {
   }
   if (card.handover) tags.append(handoverTag(card.handover));
   if ((noteDrafts.get(card.id)?.text ?? card.notes ?? '').trim()) {
-    const notes = el('span', 'notes-indicator', '▤');
+    const notes = el('span', 'notes-indicator');
     notes.title = 'Has notes';
     notes.setAttribute('role', 'img');
     notes.setAttribute('aria-label', 'Has notes');
