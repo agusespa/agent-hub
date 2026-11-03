@@ -46,6 +46,7 @@ export const mapClaudeSessions = (
   const historyById = new Map(history.map((entry) => [entry.sessionId, entry]));
   const liveById = new Map(agents.filter((agent) => agent.kind === 'interactive' && agent.sessionId)
     .map((agent) => [agent.sessionId!, agent]));
+  // Account metadata can repeat a conversation; resolve duplicates before assigning execution ownership.
   const conversations = [...new Map(desktop.map((session) => [session.sessionId, session])).values()];
   const owners = new Map<string, Set<string>>();
   const currentOwners = new Map<string, Set<string>>();

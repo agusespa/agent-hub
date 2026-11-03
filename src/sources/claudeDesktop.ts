@@ -48,5 +48,5 @@ export const readClaudeDesktopSessions = async (
       }];
     }))).flat();
   }));
-  return [...new Map(sessions.flat().map((session) => [session.sessionId, session])).values()];
+  return sessions.flat();
 };

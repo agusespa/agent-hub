@@ -39,6 +39,18 @@ const desktop = (overrides: Partial<ClaudeDesktopSession> = {}): ClaudeDesktopSe
 });
 
 describe('mapClaudeSessions', () => {
+  it('shows each Desktop conversation once, using the last metadata for its ID', () => {
+    const cards = mapClaudeSessions([agent({ sessionId: 'current', status: 'busy' })], [], [
+      desktop({ cliSessionId: 'old', title: 'Old title' }),
+      desktop({ sessionId: 'local_other', cliSessionId: 'other' }),
+      desktop({ cliSessionId: 'current', priorCliSessionIds: ['old'], title: 'Current title' }),
+    ]);
+    expect(cards.map((card) => card.id)).toEqual(['claude:local_conversation', 'claude:local_other']);
+    expect(cards[0]).toMatchObject({
+      title: 'Current title', activityId: 'claude:current', aliases: ['claude:current', 'claude:old'], liveStatus: 'working',
+    });
+  });
+
   it('uses Desktop identity and metadata with the current execution status', () => {
     const [card] = mapClaudeSessions(
       [agent({ sessionId: 'sess-1', name: 'Execution name', status: 'waiting', waitingFor: 'permission' })],

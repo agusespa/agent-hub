@@ -43,4 +43,8 @@ describe('file-backed view preferences', () => {
       expect(isViewPatch(value)).toBe(false);
     }
   });
+
+  it.each(['constructor', 'toString', 'hasOwnProperty', '__proto__'])('rejects the unexpected key %s without throwing', (key) => {
+    expect(isViewPatch({ theme: 'light', [key]: [] })).toBe(false);
+  });
 });

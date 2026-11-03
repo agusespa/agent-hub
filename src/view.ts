@@ -67,7 +67,7 @@ export const isViewPatch = (value: unknown): value is ViewPatch => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const entries = Object.entries(value);
   return entries.length > 0 && entries.every(([key, values]) =>
-    key in CHOICES ? isChoice(key as ChoiceKey, values) : LIST_KEYS.includes(key as ListKey) && isList(key as ListKey, values),
+    Object.hasOwn(CHOICES, key) ? isChoice(key as ChoiceKey, values) : LIST_KEYS.includes(key as ListKey) && isList(key as ListKey, values),
   );
 };
 
