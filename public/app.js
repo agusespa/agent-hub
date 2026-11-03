@@ -749,7 +749,7 @@ const usageState = ({ windows, ...source }) => {
   if (low.length) return { state: 'low', text: `Running low: ${low.map((window) => `${window.label} ${Math.round(100 - window.usedPercent)}% left`).join(', ')}` };
   const spare = windows.filter((window) => window.label.startsWith('Weekly') && window.resetsAt && window.resetsAt - Date.now() < DAY_MS);
   if (spare.length) {
-    return { state: 'spare', text: `Use it before it resets: ${spare.map((window) => `${window.label} ${Math.round(100 - window.usedPercent)}% left, resets ${resetTime(window.resetsAt)}`).join(', ')}` };
+    return { state: 'spare', text: 'Use it before it resets' };
   }
   return { state: 'ok', text: 'All limits fine' };
 };
@@ -805,8 +805,10 @@ const renderUsage = () => {
       // With no figures the heading says only that; why is in its title, on hover.
       const state = usageState(source);
       const label = el('span', `usage-state usage-${state.state}`, state.state === 'unknown' ? 'No usage data' : state.text);
-      if (state.state === 'unknown') label.title = state.text;
-      heading.append(renderUsageIcon(state), label);
+      label.title = state.text;
+      const status = el('span', 'usage-status');
+      status.append(renderUsageIcon(state), label);
+      heading.append(status);
       row.append(heading);
       if (source.windows.length) row.append(...source.windows.map((window) => renderUsageWindow(window, source.fetchedAt)));
       else row.append(...PLACEHOLDER_WINDOWS.map(renderPlaceholderWindow));
