@@ -1,6 +1,6 @@
 import { watch } from 'node:fs';
-import { mkdir, readdir, readFile, unlink } from 'node:fs/promises';
-import path from 'node:path';
+import { mkdir, unlink } from 'node:fs/promises';
+import { readHookFiles } from './hookFiles.js';
 import type { LiveStatus, SessionRecord, Source } from './types.js';
 
 /** What hooks/agent-hub-hook.mjs writes for a session's latest hook event. `status` is null once it ended. */
@@ -50,28 +50,12 @@ export class HookStatusStore {
   constructor(private readonly dir: string) {}
 
   async read(now = Date.now()): Promise<Map<string, HookStatus>> {
-    let names: string[];
-    try {
-      names = await readdir(this.dir);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Map();
-      throw error;
-    }
+    const entries = await readHookFiles(this.dir, isHookStatus);
     const statuses = new Map<string, HookStatus>();
-    await Promise.all(
-      names
-        .filter((name) => name.endsWith('.json'))
-        .map(async (name) => {
-          const file = path.join(this.dir, name);
-          // A file removed since the listing, or not JSON, is skipped; the hook only ever renames whole files in.
-          const value: unknown = await readFile(file, 'utf8')
-            .then((text) => JSON.parse(text))
-            .catch(() => undefined);
-          if (!isHookStatus(value)) return;
-          if (now - value.at > KEEP_MS) return unlink(file).catch(() => {});
-          statuses.set(value.id, value);
-        }),
-    );
+    await Promise.all(entries.map(async ({ file, value }) => {
+      if (now - value.at > KEEP_MS) return unlink(file).catch(() => {});
+      statuses.set(value.id, value);
+    }));
     return statuses;
   }
 

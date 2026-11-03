@@ -1,5 +1,5 @@
-import { readdir, readFile, unlink } from 'node:fs/promises';
-import path from 'node:path';
+import { unlink } from 'node:fs/promises';
+import { readHookFiles } from './hookFiles.js';
 import { readJsonFile, updateJsonFile } from './jsonFile.js';
 
 /** Where hooks/agent-hub-hook.mjs writes when each session last got a prompt, next to itself in the data folder. */
@@ -9,6 +9,11 @@ export const LAST_PROMPT_DIR = 'last-prompt';
 const KEEP_MS = 12 * 3_600_000;
 
 const isTime = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+
+const isPromptEvent = (value: unknown): value is { id: string; at: number } => {
+  const event = value as { id?: unknown; at?: unknown } | null;
+  return typeof event?.id === 'string' && isTime(event.at);
+};
 
 /**
  * When the user last sent each session a prompt, as the board's hooks saw it. The hooks write
@@ -22,7 +27,8 @@ export class LastPromptStore {
   ) {}
 
   async read(now = Date.now(), aliases: ReadonlyMap<string, string> = new Map()): Promise<Map<string, number>> {
-    const fromHooks = (await this.readHookFiles()).map((event) => ({ ...event, id: aliases.get(event.id) ?? event.id }));
+    const fromHooks = (await readHookFiles(this.hookDir, isPromptEvent))
+      .map(({ file, value }) => ({ file, id: aliases.get(value.id) ?? value.id, at: value.at }));
     const original = await this.readSaved();
     const canonicalize = (values: Map<string, number>) => {
       const canonical = new Map<string, number>();
@@ -48,28 +54,5 @@ export class LastPromptStore {
   private async readSaved(): Promise<Map<string, number>> {
     const parsed = (await readJsonFile(this.file)) as { cards?: Record<string, unknown> } | undefined;
     return new Map(Object.entries(parsed?.cards ?? {}).filter((entry): entry is [string, number] => isTime(entry[1])));
-  }
-
-  private async readHookFiles(): Promise<Array<{ id: string; at: number; file: string }>> {
-    let names: string[];
-    try {
-      names = await readdir(this.hookDir);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw error;
-    }
-    const entries = await Promise.all(
-      names
-        .filter((name) => name.endsWith('.json'))
-        .map(async (name) => {
-          const file = path.join(this.hookDir, name);
-          // A file removed since the listing, or not JSON, is skipped; the hook only ever renames whole files in.
-          const value = (await readFile(file, 'utf8')
-            .then((text) => JSON.parse(text))
-            .catch(() => undefined)) as { id?: unknown; at?: unknown } | undefined;
-          return typeof value?.id === 'string' && isTime(value.at) ? [{ id: value.id, at: value.at, file }] : [];
-        }),
-    );
-    return entries.flat();
   }
 }

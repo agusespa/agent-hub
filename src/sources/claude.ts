@@ -65,8 +65,11 @@ export const mapClaudeSessions = (
   return conversations.map((session) => {
     // Shared ancestry is not evidence that two Desktop conversations are the same.
     const cliIds = [...new Set([session.cliSessionId, ...[...session.priorCliSessionIds].reverse()])]
-      .filter((id): id is string => Boolean(id) && (currentOwners.get(id!) ?? owners.get(id!))?.size === 1 &&
-        (currentOwners.get(id!) ?? owners.get(id!))?.has(session.sessionId) === true);
+      .filter((id): id is string => {
+        if (!id) return false;
+        const sessionOwners = currentOwners.get(id) ?? owners.get(id);
+        return sessionOwners?.size === 1 && sessionOwners.has(session.sessionId);
+      });
     const currentId = session.cliSessionId && cliIds.includes(session.cliSessionId) ? session.cliSessionId : undefined;
     const entry = cliIds.map((id) => historyById.get(id)).find((entry) => entry !== undefined);
     const agent = currentId ? liveById.get(currentId) : undefined;
