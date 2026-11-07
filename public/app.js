@@ -392,7 +392,9 @@ const renderDetails = () => {
   renderNotesStatus();
 };
 
-const openDetails = (card) => {
+const openDetails = (clicked) => {
+  // A card list unchanged since an earlier poll keeps its handlers, which hold that poll's card.
+  const card = board?.cards.find((candidate) => candidate.id === clicked.id) ?? clicked;
   if (selectedCard && selectedCard.id !== card.id) void saveNotes(selectedCard.id);
   titleEdit = null;
   editing = null;
@@ -1110,6 +1112,8 @@ const updateColumns = (sections) => {
     const [header, list] = section.children;
     const [oldHeader, oldList] = current[i].children;
     if (oldHeader.outerHTML !== header.outerHTML) oldHeader.replaceWith(header);
+    // Most polls change nothing; keeping the list spares a relayout and restarting the working pulse.
+    if (oldList.outerHTML === list.outerHTML) return;
     // Each column scrolls on its own, so a poll keeps the place you scrolled to.
     const { scrollTop } = oldList;
     oldList.replaceWith(list);

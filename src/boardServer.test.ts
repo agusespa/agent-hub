@@ -81,6 +81,18 @@ describe('hooks', () => {
     expect((await (await fetch(`${server.url}/api/board`)).json()).hooks.codex).toBe('on');
   });
 
+  it('polls less often once hooks report for every installed source', async () => {
+    const home = path.join(dataDir, 'home');
+    await mkdir(path.join(home, '.codex'), { recursive: true });
+    vi.spyOn(CodexAppServer.prototype, 'listThreads').mockResolvedValue([]);
+    vi.spyOn(CodexAppServer.prototype, 'readUsage').mockResolvedValue({ source: 'codex', plan: null, windows: [], fetchedAt: 0 });
+    server = await startBoardServer({ dataDir, port: 0, home, claudeBin: path.join(dataDir, 'no-claude') });
+    const interval = async () => (await (await fetch(`${server!.url}/api/board`)).json()).pollIntervalMs;
+    expect(await interval()).toBe(5000);
+    await fetch(`${server.url}/api/hooks`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: true }) });
+    expect(await interval()).toBe(30_000);
+  });
+
   it('tells open pages when a hook reports a status', async () => {
     server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home'), ...noSources() });
     const controller = new AbortController();

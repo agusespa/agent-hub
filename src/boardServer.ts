@@ -53,6 +53,12 @@ const SOURCE_NAMES: Record<Source, string> = { claude: 'Claude', codex: 'Codex' 
 const POLL_INTERVAL_MS = 5000;
 
 /**
+ * How often they ask when hooks are on for every installed source. Hooks then report each
+ * status change at once, and polls only catch titles, git work and sessions starting.
+ */
+const HOOKED_POLL_INTERVAL_MS = 30_000;
+
+/**
  * How often the desktop app checks for concurrent work with no page asking. Hook events check
  * at once, so this only catches what hooks do not report. Each board starts several processes
  * and reloads both sources, so a short interval keeps the Mac busy all day.
@@ -245,6 +251,11 @@ export const startBoardServer = async ({
       }, USAGE_ALERT_INTERVAL_MS)
     : undefined;
 
+  const hooksReportAll = () => {
+    const installed = (Object.keys(SOURCE_NAMES) as Source[]).filter((source) => !missing.has(source));
+    return installed.length > 0 && installed.every((source) => hookState[source] === 'on');
+  };
+
   const buildBoard = async (): Promise<Board> => {
     const errors: string[] = [];
     const [claude, codexThreads, hooked, savedView] = await Promise.all([
@@ -322,7 +333,7 @@ export const startBoardServer = async ({
       hooks: hookState,
       lastHookEvents: lastEventBySource(hooked),
       notifications: Boolean(notifications),
-      pollIntervalMs: POLL_INTERVAL_MS,
+      pollIntervalMs: hooksReportAll() ? HOOKED_POLL_INTERVAL_MS : POLL_INTERVAL_MS,
       liveReload,
       generatedAt: Date.now(),
     };
