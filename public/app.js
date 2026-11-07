@@ -1112,7 +1112,7 @@ const updateColumns = (sections) => {
     const [header, list] = section.children;
     const [oldHeader, oldList] = current[i].children;
     if (oldHeader.outerHTML !== header.outerHTML) oldHeader.replaceWith(header);
-    // Most polls change nothing; keeping the list spares a relayout and restarting the working pulse.
+    // Most polls change nothing; keeping the list spares a relayout.
     if (oldList.outerHTML === list.outerHTML) return;
     // Each column scrolls on its own, so a poll keeps the place you scrolled to.
     const { scrollTop } = oldList;

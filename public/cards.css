@@ -123,22 +123,9 @@
   color: var(--working);
 }
 
-/* A slow pulse while the session works, so the live ones catch the eye. */
+/* A ring marks the live ones. It does not pulse: an endless animation keeps the GPU drawing frames. */
 .status-working::before {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--working) 20%, transparent);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  50% {
-    opacity: 0.35;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .status-working::before {
-    animation: none;
-  }
 }
 
 .status-waiting {
