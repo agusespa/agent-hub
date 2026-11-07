@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { branchName, readGitWork } from './git.js';
+import { describe, expect, it, vi } from 'vitest';
+import { branchName, GitWorkCache, readGitWork } from './git.js';
 
 describe('branchName', () => {
   it('keeps named branches', () => {
@@ -43,5 +43,21 @@ describe('readGitWork', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('GitWorkCache', () => {
+  it('reuses a folder\'s read until it expires or is cleared', async () => {
+    const read = vi.fn(async (cwd: string) => ({ changed: cwd.length }));
+    const cache = new GitWorkCache(30_000, read);
+    expect(await cache.get('/a', 0)).toEqual({ changed: 2 });
+    await cache.get('/a', 29_999);
+    await cache.get('/bb', 29_999);
+    expect(read.mock.calls.map(([cwd]) => cwd)).toEqual(['/a', '/bb']);
+    await cache.get('/a', 30_000);
+    expect(read).toHaveBeenCalledTimes(3);
+    cache.clear();
+    await cache.get('/a', 30_001);
+    expect(read).toHaveBeenCalledTimes(4);
   });
 });

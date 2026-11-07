@@ -47,3 +47,25 @@ export const readGitWork = async (cwd: string): Promise<GitWork | undefined> => 
     return undefined;
   }
 };
+
+/**
+ * Each folder's `readGitWork`, reused for `ttlMs`: every read runs several git processes, and a
+ * board with many folders would otherwise start dozens of them per poll. `clear` when agents act.
+ */
+export class GitWorkCache {
+  private readonly reads = new Map<string, { at: number; work: Promise<GitWork | undefined> }>();
+
+  constructor(private readonly ttlMs: number, private readonly read = readGitWork) {}
+
+  get(cwd: string, now = Date.now()): Promise<GitWork | undefined> {
+    const cached = this.reads.get(cwd);
+    if (cached && now - cached.at < this.ttlMs) return cached.work;
+    const work = this.read(cwd);
+    this.reads.set(cwd, { at: now, work });
+    return work;
+  }
+
+  clear(): void {
+    this.reads.clear();
+  }
+}

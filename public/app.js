@@ -1212,18 +1212,18 @@ const poll = async () => {
     loadError = `Could not load sessions: ${error.message}.${since} Retrying every ${Math.round((board?.pollIntervalMs ?? 5000) / 1000)}s.`;
     renderErrors();
   }
-  pollTimer = setTimeout(poll, board?.pollIntervalMs ?? 5000);
+  // A hidden window does not poll; it loads the board again once shown.
+  if (!document.hidden) pollTimer = setTimeout(poll, board?.pollIntervalMs ?? 5000);
 };
 
 /**
  * Loads the board as soon as a hook reports a session's status. With `npm run dev`, also
  * reloads the page when the server restarts or a file in public/ changes.
  */
-let watchingForChanges = false;
+let events = null;
 const watchForChanges = () => {
-  if (watchingForChanges || !board) return;
-  watchingForChanges = true;
-  const events = new EventSource('/api/events');
+  if (events || !board || document.hidden) return;
+  events = new EventSource('/api/events');
   let connected = false;
   events.addEventListener('open', () => {
     if (connected && board.liveReload) location.reload();
@@ -1232,6 +1232,17 @@ const watchForChanges = () => {
   events.addEventListener('board', () => poll());
   events.addEventListener('reload', () => location.reload());
 };
+
+// Each board load starts processes on the Mac, so a minimized or covered window stops loading it.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearTimeout(pollTimer);
+    events?.close();
+    events = null;
+  } else {
+    poll();
+  }
+});
 
 /** Sends JSON to the board's API; throws the server's error message when it refuses. */
 const send = async (method, url, body) => {

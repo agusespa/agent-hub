@@ -91,6 +91,24 @@ describe('hooks', () => {
     expect((await reader.read()).value).toBe('event: board\ndata: \n\n');
     controller.abort();
   });
+
+  it('tells open pages at most once per five seconds while hooks keep reporting', async () => {
+    server = await startBoardServer({ dataDir, port: 0, home: path.join(dataDir, 'home'), ...noSources() });
+    const controller = new AbortController();
+    const events = await fetch(`${server.url}/api/events`, { signal: controller.signal });
+    const reader = events.body!.pipeThrough(new TextDecoderStream()).getReader();
+    await reader.read(); // the retry line
+    const report = (n: number) => writeFile(path.join(dataDir, 'live-status', 'codex-a.json'), JSON.stringify({ id: 'codex:a', status: 'working', at: Date.now() + n }));
+    await report(0);
+    expect((await reader.read()).value).toBe('event: board\ndata: \n\n');
+    const first = Date.now();
+    await report(1);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await report(2);
+    expect((await reader.read()).value).toBe('event: board\ndata: \n\n');
+    expect(Date.now() - first).toBeGreaterThan(4500);
+    controller.abort();
+  }, 10_000);
 });
 
 describe('concurrent work alerts', () => {
@@ -116,7 +134,7 @@ describe('concurrent work alerts', () => {
     const write = (name: string, value: object) => writeFile(path.join(activity, `${name}.json`), JSON.stringify(value));
     const shared = path.join(repo, 'shared.ts');
     // Sharing a worktree is a board warning only, even once the desktop monitor has checked.
-    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(60_000);
     expect((await read()).conflicts).toEqual([expect.objectContaining({ kind: 'worktree', files: [] })]);
     await write('claude-edit', { id: 'claude:a', at, files: [shared] });
     await write('codex-other', { id: 'codex:b', at, files: [path.join(repo, 'other.ts')] });
@@ -124,7 +142,7 @@ describe('concurrent work alerts', () => {
     expect(notify).not.toHaveBeenCalled();
     await write('codex-edit', { id: 'codex:b', at, files: [shared] });
     // The desktop monitor delivers the alert without a page poll.
-    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(60_000);
     await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
     expect((await read()).conflicts).toEqual([expect.objectContaining({ kind: 'worktree', sessionIds: ['claude:local_a', 'codex:b'], files: ['shared.ts'] })]);
     // Neither a new turn with the same overlap nor answering a permission prompt repeats it.

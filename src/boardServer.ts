@@ -11,7 +11,7 @@ import { configFiles, configFolders } from './configFiles.js';
 import { ConflictAlerts, readWorktree, sessionConflicts, type SessionConflict } from './conflicts.js';
 import { FILE_ACTIVITY_DIR, FileActivityStore } from './fileActivity.js';
 import { claudeResumeId, codexNewThreadUrl, currentHandover, handoverPrompt, HandoverStore, isHandoverKind, summarizeClaudeSession, type HandoverKind } from './handover.js';
-import { readGitWork, repoNameForCwd } from './git.js';
+import { GitWorkCache, repoNameForCwd } from './git.js';
 import { HookInstaller, type HookState } from './hookInstall.js';
 import { HOOK_STATUS_DIR, HookStatusMerge, HookStatusStore, lastEventBySource } from './hookStatus.js';
 import { LAST_PROMPT_DIR, LastPromptStore } from './lastPrompt.js';
@@ -23,7 +23,7 @@ import { isNotesText, NotesStore } from './notes.js';
 import { isViewPatch, ViewStore, type Theme, type ViewSettings } from './view.js';
 import { CLAUDE_BIN, fetchClaudeSessions, fetchClaudeUsage } from './sources/claude.js';
 import { CODEX_BIN, CodexAppServer } from './sources/codex.js';
-import { COLUMNS, isColumnId, type Card, type GitWork, type LiveStatus, type PlanUsage, type SessionRecord, type Source } from './types.js';
+import { COLUMNS, isColumnId, type Card, type LiveStatus, type PlanUsage, type SessionRecord, type Source } from './types.js';
 import { UsageMeter } from './usage.js';
 import { UsageAlertLog, usageAlerts, type UsageAlert } from './usageAlerts.js';
 
@@ -49,8 +49,21 @@ interface Board {
 
 const SOURCE_NAMES: Record<Source, string> = { claude: 'Claude', codex: 'Codex' };
 
-/** How often open pages ask for a new board. */
+/** How often open pages ask for a new board. Pages in a hidden window do not ask. */
 const POLL_INTERVAL_MS = 5000;
+
+/**
+ * How often the desktop app checks for concurrent work with no page asking. Hook events check
+ * at once, so this only catches what hooks do not report. Each board starts several processes
+ * and reloads both sources, so a short interval keeps the Mac busy all day.
+ */
+const BACKGROUND_INTERVAL_MS = 60_000;
+
+/** Hook events during an agent's turn come every few seconds; a board is built at most this often for them. */
+const HOOK_REFRESH_MS = 5000;
+
+/** How long a folder's uncommitted and unpushed counts are reused, unless a hook event comes first. */
+const GIT_WORK_TTL_MS = 30_000;
 
 /** How often usage is checked for alerts, with or without a page open. */
 const USAGE_ALERT_INTERVAL_MS = 60_000;
@@ -208,6 +221,7 @@ export const startBoardServer = async ({
   const fileActivity = new FileActivityStore(path.join(dataDir, FILE_ACTIVITY_DIR));
   // Cards whose summary is being written, so a second click does not start another.
   const handingOver = new Set<string>();
+  const gitWorkCache = new GitWorkCache(GIT_WORK_TTL_MS);
 
   // Usage is checked for alerts on its own timer, since pages only poll while the board is
   // open. Each check reads the last answers; the reads it starts show in the next one.
@@ -251,13 +265,8 @@ export const startBoardServer = async ({
       record.cwd !== homeFolder &&
       isOnBoard(record, { placement: placed.columns.get(record.id), ticket: keys.get(record.id), notes: savedNotes.get(record.id), lastPromptAt: prompted.get(record.id) }, Date.now(), savedView.keepDays * DAY_MS),
     );
-    // One read per folder per build; sessions in the same folder share it.
-    const gitWork = new Map<string, Promise<GitWork | undefined>>();
-    const readFolder = (cwd: string) => {
-      let work = gitWork.get(cwd);
-      if (!work) gitWork.set(cwd, (work = readGitWork(cwd)));
-      return work;
-    };
+    // Sessions in the same folder share one read.
+    const readFolder = (cwd: string) => gitWorkCache.get(cwd);
     const cards = await Promise.all(
       records.map(async (record) => {
         const card = toCard(record, {
@@ -325,12 +334,14 @@ export const startBoardServer = async ({
   // The last board sent, which is enough to check that a card is on it.
   let lastBoard: Board | undefined;
   const getBoard = (): Promise<Board> => {
-    inFlight ??= buildBoard()
+    if (inFlight) return inFlight;
+    const build: Promise<Board> = buildBoard()
       .then((board) => (lastBoard = board))
       .finally(() => {
-        inFlight = undefined;
+        // A save meanwhile may have started a newer build, which stays.
+        if (inFlight === build) inFlight = undefined;
       });
-    return inFlight;
+    return (inFlight = build);
   };
 
   // Resolve old IDs from a stale window; every new write belongs to the permanent card.
@@ -340,9 +351,10 @@ export const startBoardServer = async ({
   };
 
   // Desktop alerts keep working when the board window is closed or in the background.
-  const conflictTimer = onConflictAlert ? setInterval(() => {
+  const checkConflicts = () => {
     void getBoard().catch((error: Error) => console.warn(`Session conflicts: ${error.message}`));
-  }, POLL_INTERVAL_MS) : undefined;
+  };
+  const conflictTimer = onConflictAlert ? setInterval(checkConflicts, BACKGROUND_INTERVAL_MS) : undefined;
 
   // Pages listening for changes: `board` when a hook reports a session's status, so they
   // load the board at once, and with `liveReload`, `reload` when public/ changes. A server
@@ -351,9 +363,24 @@ export const startBoardServer = async ({
   const sendEvent = (event: string) => {
     for (const client of eventClients) client.write(`event: ${event}\ndata: \n\n`);
   };
+  // A hook event builds a board at once for alerts and open pages, which join that build. Further
+  // events within HOOK_REFRESH_MS wait for one build at its end. Pages only listen while visible.
+  let hookRefreshAt = 0;
+  let hookRefreshTimer: NodeJS.Timeout | undefined;
+  const refreshForHooks = () => {
+    hookRefreshTimer = undefined;
+    hookRefreshAt = Date.now();
+    if (onConflictAlert) checkConflicts();
+    sendEvent('board');
+  };
   const stopWatchingHooks = await hookStatuses.watch(() => {
     inFlight = undefined;
-    sendEvent('board');
+    // Agents act between hook events, so folders are read afresh.
+    gitWorkCache.clear();
+    if (hookRefreshTimer) return;
+    const wait = hookRefreshAt + HOOK_REFRESH_MS - Date.now();
+    if (wait <= 0) refreshForHooks();
+    else hookRefreshTimer = setTimeout(refreshForHooks, wait);
   });
   let reloadTimer: NodeJS.Timeout | undefined;
   const publicWatcher = liveReload
@@ -558,6 +585,7 @@ export const startBoardServer = async ({
     close: () => {
       clearInterval(alertTimer);
       clearInterval(conflictTimer);
+      clearTimeout(hookRefreshTimer);
       codex.stop();
       stopWatchingHooks();
       publicWatcher?.close();
